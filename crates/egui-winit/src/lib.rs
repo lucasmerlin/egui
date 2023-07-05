@@ -77,6 +77,7 @@ pub struct State {
 
     /// track ime state
     input_method_editor_started: bool,
+    text_input_last_frame: bool,
 
     #[cfg(feature = "accesskit")]
     accesskit: Option<accesskit_winit::Adapter>,
@@ -105,6 +106,7 @@ impl State {
             simulate_touch_screen: false,
             pointer_touch_id: None,
 
+            text_input_last_frame: false,
             input_method_editor_started: false,
 
             #[cfg(feature = "accesskit")]
@@ -668,14 +670,21 @@ impl State {
             self.clipboard.set(copied_text);
         }
 
-        let allow_ime = text_cursor_pos.is_some();
-        if self.allow_ime != allow_ime {
-            self.allow_ime = allow_ime;
-            window.set_ime_allowed(allow_ime);
+        let text_input_this_frame = text_cursor_pos.is_some();
+        if self.text_input_last_frame != text_input_this_frame {
+            if text_input_this_frame {
+                window.begin_ime_input();
+            } else {
+                window.end_ime_input();
+            }
         }
+        self.text_input_last_frame = text_input_this_frame;
 
         if let Some(egui::Pos2 { x, y }) = text_cursor_pos {
             window.set_ime_position(winit::dpi::LogicalPosition { x, y });
+            window.begin_ime_input();
+        } else {
+            window.end_ime_input();
         }
 
         #[cfg(feature = "accesskit")]
