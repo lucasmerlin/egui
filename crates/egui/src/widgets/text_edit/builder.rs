@@ -586,6 +586,18 @@ impl<'t> TextEdit<'t> {
             ui.ctx().set_cursor_icon(CursorIcon::Text);
         }
 
+        // Update the InputState if we're interacting (E.g. updating seleciton or cursor position)
+        if interactive
+            && state.soft_keyboard_visible
+            && (response.drag_released() || response.clicked())
+        {
+            update_text_input(
+                ui.ctx(),
+                state.cursor_range(&galley),
+                text.as_str().to_owned(),
+            );
+        }
+
         let mut cursor_range = None;
         let prev_cursor_range = state.cursor.range(&galley);
         if interactive && ui.memory(|mem| mem.has_focus(id)) {
@@ -661,7 +673,16 @@ impl<'t> TextEdit<'t> {
             false
         };
 
-        if ui.is_rect_visible(rect) {
+        if ui.memory(|memory| memory.lost_focus(id)) {
+            state.soft_keyboard_visible = false;
+        }
+
+
+        if ui.memory(|mem| mem.has_focus(id)) && ui.input(|i| i.screen_rect_changed()) {
+            ui.scroll_to_rect(rect, None);
+        }
+
+       if ui.is_rect_visible(rect) || ui.memory(|mem| mem.has_focus(id)) {
             painter.galley(galley_pos, galley.clone(), text_color);
 
             if text.as_str().is_empty() && !hint_text.is_empty() {
@@ -726,17 +747,25 @@ impl<'t> TextEdit<'t> {
                             );
                         }
 
-                        // Set IME output (in screen coords) when text is editable and visible
-                        let transform = ui
-                            .memory(|m| m.layer_transforms.get(&ui.layer_id()).copied())
-                            .unwrap_or_default();
+                        if interactive {
+                            // Send the text input only when the keyboard is initially shown.
+                            if !state.soft_keyboard_visible {
+                                update_text_input(
+                                    ui.ctx(),
+                                    state.cursor_range(&galley),
+                                    text.as_str().to_owned(),
+                                );
+                                state.soft_keyboard_visible = true;
+                            }
 
-                        ui.ctx().output_mut(|o| {
-                            o.ime = Some(crate::output::IMEOutput {
-                                rect: transform * rect,
-                                cursor_rect: transform * primary_cursor_rect,
+                            // For IME, so only set it when text is editable and visible!
+                            ui.ctx().output_mut(|o| {
+                                o.ime = Some(crate::output::IMEOutput {
+                                    rect,
+                                    cursor_rect: primary_cursor_rect,
+                                });
                             });
-                        });
+                        }
                     }
                 }
             }
@@ -818,6 +847,52 @@ fn mask_if_password(is_password: bool, text: &str) -> String {
 }
 
 // ----------------------------------------------------------------------------
+
+fn update_text_input(ctx: &Context, cursor_range: Option<CursorRange>, text: String) {
+    ctx.output_mut(|o| {
+        let selection = if let Some(cursor_range) = cursor_range {
+            TextSpan {
+                start: cursor_range.primary.ccursor.index,
+                end: cursor_range.secondary.ccursor.index,
+            }
+        } else {
+            TextSpan {
+                start: 0,
+                end: 0,
+            }
+        };
+
+        let output = TextInputState {
+            text: text.as_str().to_owned(),
+            selection,
+            compose_region: None,
+        };
+
+        o.text_input_state = Some(output)
+    });
+}
+
+#[cfg(feature = "accesskit")]
+fn ccursor_from_accesskit_text_position(
+    id: Id,
+    galley: &Galley,
+    position: &accesskit::TextPosition,
+) -> Option<CCursor> {
+    let mut total_length = 0usize;
+    for (i, row) in galley.rows.iter().enumerate() {
+        let row_id = id.with(i);
+        if row_id.accesskit_id() == position.node {
+            return Some(CCursor {
+                index: total_length + position.character_index,
+                prefer_next_row: !(position.character_index == row.glyphs.len()
+                    && !row.ends_with_newline
+                    && (i + 1) < galley.rows.len()),
+            });
+        }
+        total_length += row.glyphs.len() + (row.ends_with_newline as usize);
+    }
+    None
+}
 
 /// Check for (keyboard) events to edit the cursor and/or text.
 #[allow(clippy::too_many_arguments)]
@@ -1025,6 +1100,44 @@ fn events(
                     None
                 }
             },
+            Event::TextInputState(input) => {
+                text.replace_with(&input.text);
+
+                let mut ccursor = CCursorRange::default();
+                ccursor.primary = CCursor::new(input.selection.start);
+                ccursor.secondary = CCursor::new(input.selection.end);
+
+                if let Some(compose_region) = input.compose_region {
+                    ccursor = CCursorRange::two(
+                        CCursor::new(compose_region.start),
+                        CCursor::new(compose_region.end),
+                    );
+                }
+
+                // TODO: Improve selection
+                Some(ccursor)
+            }
+
+            #[cfg(feature = "accesskit")]
+            Event::AccessKitActionRequest(accesskit::ActionRequest {
+                action: accesskit::Action::SetTextSelection,
+                target,
+                data: Some(accesskit::ActionData::SetTextSelection(selection)),
+            }) => {
+                if id.accesskit_id() == *target {
+                    let primary =
+                        ccursor_from_accesskit_text_position(id, galley, &selection.focus);
+                    let secondary =
+                        ccursor_from_accesskit_text_position(id, galley, &selection.anchor);
+                    if let (Some(primary), Some(secondary)) = (primary, secondary) {
+                        Some(CCursorRange { primary, secondary })
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
 
             _ => None,
         };
