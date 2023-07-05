@@ -1581,6 +1581,13 @@ mod wgpu_integration {
             let wgpu_eframe = WgpuWinitApp::new(&event_loop, app_name, native_options, app_creator);
             run_and_exit(event_loop, wgpu_eframe);
         }
+
+        #[cfg(target_os = "ios")]
+        {
+            let event_loop = create_event_loop_builder(&mut native_options).build();
+            let wgpu_eframe = WgpuWinitApp::new(&event_loop, app_name, native_options, app_creator);
+            run_and_exit(event_loop, wgpu_eframe);
+        }
     }
 }
 
