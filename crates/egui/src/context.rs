@@ -160,10 +160,10 @@ struct ContextImpl {
     repaint: Repaint,
 
     /// Written to during the frame.
-    layer_rects_this_frame: ahash::HashMap<LayerId, Vec<(Id, Rect)>>,
+    layer_rects_this_frame: ahash::HashMap<LayerId, Vec<(Id, Rect, Sense)>>,
 
     /// Read
-    layer_rects_prev_frame: ahash::HashMap<LayerId, Vec<(Id, Rect)>>,
+    layer_rects_prev_frame: ahash::HashMap<LayerId, Vec<(Id, Rect, Sense)>>,
 
     #[cfg(feature = "accesskit")]
     is_accesskit_enabled: bool,
@@ -679,17 +679,20 @@ impl Context {
                 ctx.layer_rects_this_frame
                     .entry(layer_id)
                     .or_default()
-                    .push((id, interact_rect));
+                    .push((id, interact_rect, sense));
 
                 if hovered {
                     let pointer_pos = ctx.input.pointer.interact_pos();
                     if let Some(pointer_pos) = pointer_pos {
                         if let Some(rects) = ctx.layer_rects_prev_frame.get(&layer_id) {
-                            for &(prev_id, prev_rect) in rects.iter().rev() {
+                            for &(prev_id, prev_rect, prev_sense) in rects.iter().rev() {
                                 if prev_id == id {
                                     break; // there is no other interactive widget covering us at the pointer position.
                                 }
-                                if prev_rect.contains(pointer_pos) {
+                                if prev_rect.contains(pointer_pos)
+                                    && ((prev_sense.click && sense.click)
+                                        || (prev_sense.drag && sense.drag))
+                                {
                                     // Another interactive widget is covering us at the pointer position,
                                     // so we aren't hovered.
 
