@@ -572,6 +572,18 @@ impl<'t> TextEdit<'t> {
             ui.ctx().set_cursor_icon(CursorIcon::Text);
         }
 
+        // Update the InputState if we're interacting (E.g. updating seleciton or cursor position)
+        if interactive
+            && state.soft_keyboard_visible
+            && (response.drag_released() || response.clicked())
+        {
+            update_text_input(
+                ui.ctx(),
+                state.cursor_range(&galley),
+                text.as_str().to_owned(),
+            );
+        }
+
         let mut cursor_range = None;
         let prev_cursor_range = state.cursor_range(&galley);
         if interactive && ui.memory(|mem| mem.has_focus(id)) {
@@ -646,6 +658,10 @@ impl<'t> TextEdit<'t> {
             false
         };
 
+        if ui.memory(|memory| memory.lost_focus(id)) {
+            state.soft_keyboard_visible = false;
+        }
+
         if ui.is_rect_visible(rect) {
             painter.galley(text_draw_pos, galley.clone());
 
@@ -681,6 +697,16 @@ impl<'t> TextEdit<'t> {
                         }
 
                         if interactive {
+                            // Send the text input only when the keyboard is initially shown.
+                            if !state.soft_keyboard_visible {
+                                update_text_input(
+                                    ui.ctx(),
+                                    state.cursor_range(&galley),
+                                    text.as_str().to_owned(),
+                                );
+                                state.soft_keyboard_visible = true;
+                            }
+
                             // eframe web uses `text_cursor_pos` when showing IME,
                             // so only set it when text is editable and visible!
                             // But `winit` and `egui_web` differs in how to set the
@@ -850,6 +876,33 @@ fn mask_if_password(is_password: bool, text: &str) -> String {
 }
 
 // ----------------------------------------------------------------------------
+
+fn update_text_input(ctx: &Context, cursor_range: Option<CursorRange>, text: String) {
+    ctx.output_mut(|o| {
+        let selection = if let Some(cursor_range) = cursor_range {
+            TextSpan {
+                start: Some(cursor_range.primary.ccursor.index),
+                end: Some(cursor_range.secondary.ccursor.index),
+            }
+        } else {
+            TextSpan {
+                start: None,
+                end: None,
+            }
+        };
+
+        let output = TextInputState {
+            text: text.as_str().to_owned(),
+            selection,
+            compose_region: TextSpan {
+                start: None,
+                end: None,
+            },
+        };
+
+        o.text_input_state = Some(output)
+    });
+}
 
 #[cfg(feature = "accesskit")]
 fn ccursor_from_accesskit_text_position(
@@ -1036,6 +1089,29 @@ fn events(
                 } else {
                     None
                 }
+            }
+
+            Event::TextInputState(input) => {
+                text.replace(&input.text);
+
+                let mut ccursor = CCursorRange::default();
+
+                if let Some(start) = input.selection.start {
+                    ccursor.primary = CCursor::new(start);
+                }
+                if let Some(end) = input.selection.end {
+                    ccursor.secondary = CCursor::new(end);
+                }
+
+                if input.compose_region.start.is_some() && input.compose_region.end.is_some() {
+                    ccursor = CCursorRange::two(
+                        CCursor::new(input.compose_region.start.unwrap()),
+                        CCursor::new(input.compose_region.end.unwrap()),
+                    );
+                }
+
+                // TODO: Improve selection
+                Some(ccursor)
             }
 
             #[cfg(feature = "accesskit")]
