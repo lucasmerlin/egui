@@ -82,3 +82,6 @@ wgpu = { version = "0.19.1", default-features = false, features = [
     "fragile-send-sync-non-atomic-wasm",
 ] }
 winit = { version = "0.29.4", default-features = false }
+
+[patch.crates-io]
+winit = { path = "../github/winit" }

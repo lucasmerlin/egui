@@ -340,6 +340,9 @@ pub struct NativeOptions {
     /// Controls whether or not the native window position and size will be
     /// persisted (only if the "persistence" feature is enabled).
     pub persist_window: bool,
+
+    #[cfg(feature = "persistence")]
+    pub persistence_path: Option<std::path::PathBuf>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -356,6 +359,9 @@ impl Clone for NativeOptions {
 
             #[cfg(feature = "wgpu")]
             wgpu_options: self.wgpu_options.clone(),
+
+            #[cfg(feature = "persistence")]
+            persistence_path: self.persistence_path.clone(),
 
             ..*self
         }
@@ -396,6 +402,9 @@ impl Default for NativeOptions {
             wgpu_options: egui_wgpu::WgpuConfiguration::default(),
 
             persist_window: true,
+
+            #[cfg(feature = "persistence")]
+            persistence_path: None,
         }
     }
 }
