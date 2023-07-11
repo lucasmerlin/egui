@@ -740,12 +740,19 @@ mod glow_integration {
 
         fn init_run_state(&mut self, event_loop: &EventLoopWindowTarget<UserEvent>) -> Result<()> {
             crate::profile_function!();
-            let storage = epi_integration::create_storage(
-                self.native_options
-                    .app_id
-                    .as_ref()
-                    .unwrap_or(&self.app_name),
-            );
+            #[cfg(feature = "persistence")]
+            let storage = if let Some(persistence_path) = &self.native_options.persistence_path {
+                epi_integration::create_storage_with_file(persistence_path)
+            } else {
+                epi_integration::create_storage(
+                    self.native_options
+                        .app_id
+                        .as_ref()
+                        .unwrap_or(&self.app_name),
+                )
+            };
+            #[cfg(not(feature = "persistence"))]
+            let storage = None;
 
             let (gl_window, gl) = Self::create_glutin_windowed_context(
                 event_loop,
@@ -1446,12 +1453,20 @@ mod wgpu_integration {
                             self.set_window(window)?;
                         }
                     } else {
-                        let storage = epi_integration::create_storage(
-                            self.native_options
-                                .app_id
-                                .as_ref()
-                                .unwrap_or(&self.app_name),
-                        );
+                        #[cfg(feature = "persistence")]
+                            let storage = if let Some(persistence_path) = &self.native_options.persistence_path {
+                            epi_integration::create_storage_with_file(persistence_path)
+                        } else {
+                            epi_integration::create_storage(
+                                self.native_options
+                                    .app_id
+                                    .as_ref()
+                                    .unwrap_or(&self.app_name),
+                            )
+                        };
+                        #[cfg(not(feature = "persistence"))]
+                            let storage = None;
+
                         let window = Self::create_window(
                             event_loop,
                             storage.as_deref(),
