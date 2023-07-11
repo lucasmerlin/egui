@@ -2,6 +2,7 @@
 
 use std::time::Instant;
 
+use std::path::PathBuf;
 use winit::event_loop::EventLoopWindowTarget;
 
 use raw_window_handle::{HasDisplayHandle as _, HasWindowHandle as _};
@@ -116,6 +117,12 @@ pub fn create_storage(_app_name: &str) -> Option<Box<dyn epi::Storage>> {
     if let Some(storage) = super::file_storage::FileStorage::from_app_id(_app_name) {
         return Some(Box::new(storage));
     }
+    None
+}
+
+pub fn create_storage_with_file(file: impl Into<PathBuf>) -> Option<Box<dyn epi::Storage>> {
+    #[cfg(feature = "persistence")]
+    return Some(Box::new(super::file_storage::FileStorage::from_ron_filepath(file)));
     None
 }
 
