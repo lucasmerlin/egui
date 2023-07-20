@@ -566,7 +566,7 @@ impl ScrollArea {
             } else {
                 // Kinetic scrolling
                 let stop_speed = 20.0; // Pixels per second.
-                let friction_coeff = 1000.0; // Pixels per second squared.
+                let friction_coeff = 1500.0; // Pixels per second squared.
                 let dt = ui.input(|i| i.unstable_dt);
 
                 let friction = friction_coeff * dt;
