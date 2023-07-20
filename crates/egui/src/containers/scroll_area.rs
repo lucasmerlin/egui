@@ -605,7 +605,7 @@ impl ScrollArea {
                 for d in 0..2 {
                     // Kinetic scrolling
                     let stop_speed = 20.0; // Pixels per second.
-                    let friction_coeff = 1000.0; // Pixels per second squared.
+                    let friction_coeff = 1500.0; // Pixels per second squared.
 
                     let friction = friction_coeff * dt;
                     if friction > state.vel[d].abs() || state.vel[d].abs() < stop_speed {
