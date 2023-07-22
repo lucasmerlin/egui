@@ -513,6 +513,10 @@ impl EpiIntegration {
         self.egui_winit.on_event(&self.egui_ctx, event)
     }
 
+    pub fn add_egui_event(&mut self, event: egui::Event) {
+        self.egui_winit.egui_input_mut().events.push(event);
+    }
+
     #[cfg(feature = "accesskit")]
     pub fn on_accesskit_action_request(&mut self, request: accesskit::ActionRequest) {
         self.egui_winit.on_accesskit_action_request(request);

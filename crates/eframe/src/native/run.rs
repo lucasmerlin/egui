@@ -1136,6 +1136,7 @@ pub use glow_integration::run_glow;
 
 #[cfg(feature = "wgpu")]
 mod wgpu_integration {
+    use std::mem;
     use std::sync::Arc;
 
     use parking_lot::Mutex;
@@ -1157,6 +1158,7 @@ mod wgpu_integration {
         native_options: epi::NativeOptions,
         app_creator: Option<epi::AppCreator>,
         running: Option<WgpuWinitRunning>,
+        event_queue: Vec<egui::Event>,
 
         /// Window surface state that's initialized when the app starts running via a Resumed event
         /// and on Android will also be destroyed if the application is paused.
@@ -1183,6 +1185,7 @@ mod wgpu_integration {
                 app_name: app_name.to_owned(),
                 native_options,
                 running: None,
+                event_queue: vec![],
                 window: None,
                 app_creator: Some(app_creator),
                 is_focused: true,
@@ -1313,12 +1316,17 @@ mod wgpu_integration {
                 integration.warm_up(app.as_mut(), &window);
             }
 
+            mem::take(&mut self.event_queue).into_iter().for_each(|event| {
+                integration.add_egui_event(event);
+            });
+
             self.running = Some(WgpuWinitRunning {
                 painter,
                 integration,
                 app,
             });
             self.window = Some(window);
+
 
             Ok(())
         }
@@ -1481,6 +1489,16 @@ mod wgpu_integration {
                     #[cfg(target_os = "android")]
                     self.drop_window()?;
                     EventResult::Wait
+                }
+                winit::event::Event::OpenUrl(url) => {
+                    if let Some(running) = &mut self.running {
+                        //running.integration.open_url(url);
+                        running.integration.add_egui_event(egui::Event::OpenUrl(url.clone()));
+                        EventResult::RepaintNext
+                    } else {
+                        self.event_queue.push(egui::Event::OpenUrl(url.clone()));
+                        EventResult::Wait
+                    }
                 }
 
                 winit::event::Event::WindowEvent { event, .. } => {

@@ -307,6 +307,10 @@ pub enum Event {
     /// An assistive technology (e.g. screen reader) requested an action.
     #[cfg(feature = "accesskit")]
     AccessKitActionRequest(accesskit::ActionRequest),
+
+    /// An universal link was clicked and opened the app.
+    /// Or, a registered URL scheme, e.g. egui://hello, was clicked and opened the app.
+    OpenUrl(String),
 }
 
 /// Mouse button (or similar for touch input)
