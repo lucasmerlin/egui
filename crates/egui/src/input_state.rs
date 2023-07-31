@@ -53,6 +53,7 @@ pub struct InputState {
 
     /// Position and size of the egui area.
     pub screen_rect: Rect,
+    previous_screen_rect: Rect,
 
     /// Also known as device pixel ratio, > 1 for high resolution screens.
     pub pixels_per_point: f32,
@@ -128,6 +129,7 @@ impl Default for InputState {
             scroll_delta: Vec2::ZERO,
             zoom_factor_delta: 1.0,
             screen_rect: Rect::from_min_size(Default::default(), vec2(10_000.0, 10_000.0)),
+            previous_screen_rect: Rect::from_min_size(Default::default(), vec2(10_000.0, 10_000.0)),
             pixels_per_point: 1.0,
             max_texture_side: 2048,
             time: 0.0,
@@ -161,6 +163,7 @@ impl InputState {
             new.predicted_dt
         };
 
+        let previous_screen_rect = self.screen_rect;
         let screen_rect = new.screen_rect.unwrap_or(self.screen_rect);
         self.create_touch_states_for_new_devices(&new.events);
         for touch_state in self.touch_states.values_mut() {
@@ -216,6 +219,7 @@ impl InputState {
             scroll_delta,
             zoom_factor_delta,
             screen_rect,
+            previous_screen_rect,
             pixels_per_point: new.pixels_per_point.unwrap_or(self.pixels_per_point),
             max_texture_side: new.max_texture_side.unwrap_or(self.max_texture_side),
             time,
@@ -233,6 +237,11 @@ impl InputState {
     #[inline(always)]
     pub fn screen_rect(&self) -> Rect {
         self.screen_rect
+    }
+
+    #[inline(always)]
+    pub fn screen_rect_changed(&self) -> bool {
+        self.screen_rect != self.previous_screen_rect
     }
 
     /// Zoom scale factor this frame (e.g. from ctrl-scroll or pinch gesture).
@@ -982,6 +991,7 @@ impl InputState {
             scroll_delta,
             zoom_factor_delta,
             screen_rect,
+            previous_screen_rect,
             pixels_per_point,
             max_texture_side,
             time,
@@ -1017,6 +1027,7 @@ impl InputState {
         ui.label(format!("scroll_delta: {scroll_delta:?} points"));
         ui.label(format!("zoom_factor_delta: {zoom_factor_delta:4.2}x"));
         ui.label(format!("screen_rect: {screen_rect:?} points"));
+        ui.label(format!("previous_screen_rect: {:?} points", previous_screen_rect));
         ui.label(format!(
             "{pixels_per_point} physical pixels for each logical point"
         ));
