@@ -881,23 +881,20 @@ fn update_text_input(ctx: &Context, cursor_range: Option<CursorRange>, text: Str
     ctx.output_mut(|o| {
         let selection = if let Some(cursor_range) = cursor_range {
             TextSpan {
-                start: Some(cursor_range.primary.ccursor.index),
-                end: Some(cursor_range.secondary.ccursor.index),
+                start: cursor_range.primary.ccursor.index,
+                end: cursor_range.secondary.ccursor.index,
             }
         } else {
             TextSpan {
-                start: None,
-                end: None,
+                start: 0,
+                end: 0,
             }
         };
 
         let output = TextInputState {
             text: text.as_str().to_owned(),
             selection,
-            compose_region: TextSpan {
-                start: None,
-                end: None,
-            },
+            compose_region: None,
         };
 
         o.text_input_state = Some(output)
@@ -1095,18 +1092,13 @@ fn events(
                 text.replace(&input.text);
 
                 let mut ccursor = CCursorRange::default();
+                ccursor.primary = CCursor::new(input.selection.start);
+                ccursor.secondary = CCursor::new(input.selection.end);
 
-                if let Some(start) = input.selection.start {
-                    ccursor.primary = CCursor::new(start);
-                }
-                if let Some(end) = input.selection.end {
-                    ccursor.secondary = CCursor::new(end);
-                }
-
-                if input.compose_region.start.is_some() && input.compose_region.end.is_some() {
+                if let Some(compose_region) = input.compose_region {
                     ccursor = CCursorRange::two(
-                        CCursor::new(input.compose_region.start.unwrap()),
-                        CCursor::new(input.compose_region.end.unwrap()),
+                        CCursor::new(compose_region.start),
+                        CCursor::new(compose_region.end),
                     );
                 }
 

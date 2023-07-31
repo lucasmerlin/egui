@@ -326,10 +326,13 @@ impl State {
                             start: state.selection.start,
                             end: state.selection.end,
                         },
-                        compose_region: TextSpan {
-                            start: state.compose_region.start,
-                            end: state.compose_region.end,
-                        },
+                        compose_region: state
+                            .compose_region
+                            .as_ref()
+                            .map(|r| TextSpan {
+                                start: r.start,
+                                end: r.end,
+                            }),
                     }));
                 EventResponse {
                     repaint: true,
@@ -704,10 +707,12 @@ impl State {
                     start: text_input_state.selection.start,
                     end: text_input_state.selection.end,
                 },
-                compose_region: winit::event::TextSpan {
-                    start: text_input_state.compose_region.start,
-                    end: text_input_state.compose_region.end,
-                },
+                compose_region: text_input_state
+                    .compose_region
+                    .map(|r| winit::event::TextSpan {
+                        start: r.start,
+                        end: r.end,
+                    }),
             });
         }
 
