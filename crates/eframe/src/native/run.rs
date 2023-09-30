@@ -1651,6 +1651,7 @@ fn short_event_description(event: &winit::event::Event<'_, UserEvent>) -> &'stat
     use winit::event::{DeviceEvent, Event, StartCause, WindowEvent};
 
     match event {
+        Event::OpenUrl(_) => "Event::OpenUrl",
         Event::Suspended => "Event::Suspended",
         Event::Resumed => "Event::Resumed",
         Event::MainEventsCleared => "Event::MainEventsCleared",
@@ -1705,6 +1706,7 @@ fn short_event_description(event: &winit::event::Event<'_, UserEvent>) -> &'stat
             WindowEvent::ScaleFactorChanged { .. } => "WindowEvent::ScaleFactorChanged",
             WindowEvent::ThemeChanged { .. } => "WindowEvent::ThemeChanged",
             WindowEvent::Occluded { .. } => "WindowEvent::Occluded",
+            WindowEvent::TextInputState { .. } => "WindowEvent::TextInputState",
         },
     }
 }
