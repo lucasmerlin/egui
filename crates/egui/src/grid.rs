@@ -221,7 +221,7 @@ impl GridLayout {
         self.col += 1;
     }
 
-    fn paint_row(&mut self, cursor: &mut Rect, painter: &Painter) {
+    fn paint_row(&mut self, cursor: &Rect, painter: &Painter) {
         // handle row color painting based on color-picker function
         let Some(color_picker) = self.color_picker.as_ref() else {
             return;
@@ -319,6 +319,7 @@ impl Grid {
     }
 
     /// Setting this will allow for dynamic coloring of rows of the grid object
+    #[inline]
     pub fn with_row_color<F>(mut self, color_picker: F) -> Self
     where
         F: Send + Sync + Fn(usize, &Style) -> Option<Color32> + 'static,
@@ -328,6 +329,7 @@ impl Grid {
     }
 
     /// Setting this will allow the last column to expand to take up the rest of the space of the parent [`Ui`].
+    #[inline]
     pub fn num_columns(mut self, num_columns: usize) -> Self {
         self.num_columns = Some(num_columns);
         self
@@ -352,6 +354,7 @@ impl Grid {
 
     /// Set minimum width of each column.
     /// Default: [`crate::style::Spacing::interact_size`]`.x`.
+    #[inline]
     pub fn min_col_width(mut self, min_col_width: f32) -> Self {
         self.min_col_width = Some(min_col_width);
         self
@@ -359,12 +362,14 @@ impl Grid {
 
     /// Set minimum height of each row.
     /// Default: [`crate::style::Spacing::interact_size`]`.y`.
+    #[inline]
     pub fn min_row_height(mut self, min_row_height: f32) -> Self {
         self.min_row_height = Some(min_row_height);
         self
     }
 
     /// Set soft maximum width (wrapping width) of each column.
+    #[inline]
     pub fn max_col_width(mut self, max_col_width: f32) -> Self {
         self.max_cell_size.x = max_col_width;
         self
@@ -372,6 +377,7 @@ impl Grid {
 
     /// Set spacing between columns/rows.
     /// Default: [`crate::style::Spacing::item_spacing`].
+    #[inline]
     pub fn spacing(mut self, spacing: impl Into<Vec2>) -> Self {
         self.spacing = Some(spacing.into());
         self
@@ -379,6 +385,7 @@ impl Grid {
 
     /// Change which row number the grid starts on.
     /// This can be useful when you have a large [`Grid`] inside of [`ScrollArea::show_rows`].
+    #[inline]
     pub fn start_row(mut self, start_row: usize) -> Self {
         self.start_row = start_row;
         self
@@ -433,9 +440,9 @@ impl Grid {
 
                 // paint first incoming row
                 if is_color {
-                    let mut cursor = ui.cursor();
+                    let cursor = ui.cursor();
                     let painter = ui.painter();
-                    grid.paint_row(&mut cursor, painter);
+                    grid.paint_row(&cursor, painter);
                 }
 
                 ui.set_grid(grid);

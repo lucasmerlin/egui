@@ -83,16 +83,6 @@ impl Painter {
     pub(crate) fn set_invisible(&mut self) {
         self.fade_to_color = Some(Color32::TRANSPARENT);
     }
-
-    #[deprecated = "Use Painter::with_clip_rect"] // Deprecated in 2022-04-18, before egui 0.18
-    pub fn sub_region(&self, rect: Rect) -> Self {
-        Self {
-            ctx: self.ctx.clone(),
-            layer_id: self.layer_id,
-            clip_rect: rect.intersect(self.clip_rect),
-            fade_to_color: self.fade_to_color,
-        }
-    }
 }
 
 /// ## Accessors etc
@@ -333,12 +323,13 @@ impl Painter {
     }
 
     /// Show an arrow starting at `origin` and going in the direction of `vec`, with the length `vec.length()`.
-    pub fn arrow(&self, origin: Pos2, vec: Vec2, stroke: Stroke) {
+    pub fn arrow(&self, origin: Pos2, vec: Vec2, stroke: impl Into<Stroke>) {
         use crate::emath::*;
         let rot = Rot2::from_angle(std::f32::consts::TAU / 10.0);
         let tip_length = vec.length() / 4.0;
         let tip = origin + vec;
         let dir = vec.normalized();
+        let stroke = stroke.into();
         self.line_segment([origin, tip], stroke);
         self.line_segment([tip, tip - tip_length * (rot * dir)], stroke);
         self.line_segment([tip, tip - tip_length * (rot.inverse() * dir)], stroke);

@@ -317,7 +317,7 @@ fn color_picker_hsvag_2d(ui: &mut Ui, hsva: &mut HsvaGamma, alpha: Alpha) {
     color_slider_2d(ui, s, v, |s, v| HsvaGamma { s, v, ..opaque }.into());
 }
 
-//// Shows a color picker where the user can change the given [`Hsva`] color.
+/// Shows a color picker where the user can change the given [`Hsva`] color.
 ///
 /// Returns `true` on change.
 pub fn color_picker_hsva_2d(ui: &mut Ui, hsva: &mut Hsva, alpha: Alpha) -> bool {
@@ -442,5 +442,5 @@ fn color_cache_set(ctx: &Context, rgba: impl Into<Rgba>, hsva: Hsva) {
 
 // To ensure we keep hue slider when `srgba` is gray we store the full [`Hsva`] in a cache:
 fn use_color_cache<R>(ctx: &Context, f: impl FnOnce(&mut FixedCache<Rgba, Hsva>) -> R) -> R {
-    ctx.data_mut(|d| f(d.get_temp_mut_or_default(Id::null())))
+    ctx.data_mut(|d| f(d.get_temp_mut_or_default(Id::NULL)))
 }

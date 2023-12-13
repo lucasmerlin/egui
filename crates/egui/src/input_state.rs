@@ -150,8 +150,10 @@ impl InputState {
         mut self,
         mut new: RawInput,
         requested_repaint_last_frame: bool,
+        pixels_per_point: f32,
     ) -> InputState {
         crate::profile_function!();
+
         let time = new.time.unwrap_or(self.time + new.predicted_dt as f64);
         let unstable_dt = (time - self.time) as f32;
 
@@ -220,7 +222,7 @@ impl InputState {
             zoom_factor_delta,
             screen_rect,
             previous_screen_rect,
-            pixels_per_point: new.pixels_per_point.unwrap_or(self.pixels_per_point),
+            pixels_per_point,
             max_texture_side: new.max_texture_side.unwrap_or(self.max_texture_side),
             time,
             unstable_dt,
@@ -232,6 +234,12 @@ impl InputState {
             events: new.events.clone(), // TODO(emilk): remove clone() and use raw.events
             raw: new,
         }
+    }
+
+    /// Info about the active viewport
+    #[inline]
+    pub fn viewport(&self) -> &ViewportInfo {
+        self.raw.viewport()
     }
 
     #[inline(always)]

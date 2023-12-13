@@ -119,7 +119,7 @@ impl std::fmt::Debug for Element {
         match &self {
             Self::Value { value, .. } => f
                 .debug_struct("Element::Value")
-                .field("type_id", &value.type_id())
+                .field("type_id", &(**value).type_id())
                 .finish_non_exhaustive(),
             Self::Serialized(SerializedElement {
                 type_id,
@@ -318,7 +318,7 @@ use crate::Id;
 ///
 /// Values can either be "persisted" (serializable) or "temporary" (cleared when egui is shut down).
 ///
-/// You can store state using the key [`Id::null`]. The state will then only be identified by its type.
+/// You can store state using the key [`Id::NULL`]. The state will then only be identified by its type.
 ///
 /// ```
 /// # use egui::{Id, util::IdTypeMap};
