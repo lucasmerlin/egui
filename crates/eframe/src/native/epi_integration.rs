@@ -270,9 +270,9 @@ impl EpiIntegration {
         self.app_icon_setter.update();
     }
 
-    pub fn add_egui_event(&mut self, event: egui::Event) {
-        self.egui_winit.egui_input_mut().events.push(event);
-    }
+    // pub fn add_egui_event(&mut self, event: egui::Event) {
+    //     self.egui_winit.egui_input_mut().events.push(event);
+    // }
 
     /// Run user code - this can create immediate viewports, so hold no locks over this!
     ///

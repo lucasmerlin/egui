@@ -353,7 +353,7 @@ impl State {
 
                 EventResponse {
                     repaint: true,
-                    consumed: egui_ctx.wants_keyboard_input(),
+                    consumed: self.egui_ctx.wants_keyboard_input(),
                 }
             }
             WindowEvent::TextInputState(state) => {
@@ -1550,6 +1550,7 @@ pub fn short_generic_event_description<T>(event: &winit::event::Event<'_, T>) ->
             StartCause::Init => "NewEvents::Init",
         },
         Event::WindowEvent { event, .. } => short_window_event_description(event),
+        Event::OpenUrl { .. } => "Event::OpenUrl",
     }
 }
 
@@ -1585,6 +1586,7 @@ pub fn short_window_event_description(event: &winit::event::WindowEvent<'_>) -> 
         WindowEvent::ScaleFactorChanged { .. } => "WindowEvent::ScaleFactorChanged",
         WindowEvent::ThemeChanged { .. } => "WindowEvent::ThemeChanged",
         WindowEvent::Occluded { .. } => "WindowEvent::Occluded",
+        WindowEvent::TextInputState { .. } => "WindowEvent::TextInputState",
     }
 }
 

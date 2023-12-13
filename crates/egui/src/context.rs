@@ -138,10 +138,10 @@ struct ViewportState {
     used: bool,
 
     /// Written to during the frame.
-    layer_rects_this_frame: HashMap<LayerId, Vec<(Id, Rect)>>,
+    layer_rects_this_frame: HashMap<LayerId, Vec<(Id, Rect, Sense)>>,
 
     /// Read
-    layer_rects_prev_frame: HashMap<LayerId, Vec<(Id, Rect)>>,
+    layer_rects_prev_frame: HashMap<LayerId, Vec<(Id, Rect, Sense)>>,
 
     /// State related to repaint scheduling.
     repaint: ViewportRepaintInfo,

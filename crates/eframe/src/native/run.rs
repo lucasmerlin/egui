@@ -341,14 +341,14 @@ fn run_and_exit(event_loop: EventLoop<UserEvent>, mut winit_app: impl WinitApp +
             }
 
             // WaitUntil seems to not work on iOS
-            #[cfg(target_os = "ios")]
-            winit_app
-                .get_window_winit_id(ViewportId::ROOT)
-                .map(|window_id| {
-                    winit_app
-                        .window(window_id)
-                        .map(|window| window.request_redraw())
-                });
+            //#[cfg(target_os = "ios")]
+            // winit_app
+            //     .get_window_winit_id(ViewportId::ROOT)
+            //     .map(|window_id| {
+            //         winit_app
+            //             .window(window_id)
+            //             .map(|window| window.request_redraw())
+            //     });
 
             control_flow.set_wait_until(next_repaint_time);
         };
