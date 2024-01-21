@@ -365,14 +365,14 @@ fn run_and_exit(
 
         if let Some(next_repaint_time) = next_repaint_time {
             // WaitUntil seems to not work on iOS
-            #[cfg(target_os = "ios")]
-            winit_app
-                .get_window_winit_id(ViewportId::ROOT)
-                .map(|window_id| {
-                    winit_app
-                        .window(window_id)
-                        .map(|window| window.request_redraw())
-                });
+            // #[cfg(target_os = "ios")]
+            // winit_app
+            //     .get_window_winit_id(egui::ViewportId::ROOT)
+            //     .map(|window_id| {
+            //         winit_app
+            //             .window(window_id)
+            //             .map(|window| window.request_redraw())
+            //     });
 
             event_loop_window_target.set_control_flow(ControlFlow::WaitUntil(next_repaint_time));
         };
