@@ -1466,11 +1466,9 @@ impl Tessellator {
             path::rounded_rectangle(&mut self.scratchpad_points, rect, rounding);
             path.add_line_loop(&self.scratchpad_points);
 
-            path.translate(TSTransform {
-                scaling: 1.0,
-                rotation: angle,
-                translation: Vec2::ZERO,
-            });
+            path.translate(
+                TSTransform::from_rotation(angle)
+            );
 
             if uv.is_positive() {
                 // Textured

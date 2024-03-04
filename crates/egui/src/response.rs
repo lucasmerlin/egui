@@ -346,7 +346,7 @@ impl Response {
             let mut delta = self.ctx.input(|i| i.pointer.delta());
             if let Some(scaling) = self
                 .ctx
-                .memory(|m| m.layer_transforms.get(&self.layer_id).map(|t| t.scaling))
+                .memory(|m| m.layer_transforms.get(&self.layer_id).map(|t| t.scaling()))
             {
                 delta /= scaling;
             }

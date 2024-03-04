@@ -1,4 +1,5 @@
 use std::f32::consts::PI;
+use egui::ComboBox;
 use egui::emath::TSTransform;
 
 #[derive(Clone, Default, PartialEq)]
@@ -41,7 +42,7 @@ impl super::View for PanZoom {
         let response = ui.interact(rect, id, egui::Sense::click_and_drag());
         // Allow dragging the background as well.
         if response.dragged() {
-            self.transform.translation += response.drag_delta();
+            self.transform = TSTransform::from_translation(response.drag_delta()) * self.transform;
         }
 
         // Plot-like reset
@@ -89,6 +90,20 @@ impl super::View for PanZoom {
                 Box::new(|ui: &mut egui::Ui, _| ui.button("right top ):")),
             ),
             (
+                egui::Pos2::new(120.0, 0.0),
+                Box::new(|ui: &mut egui::Ui, _| {
+                    ComboBox::new("Select", "Hello")
+                        .width(100.0)
+                        .selected_text("Select")
+                        .show_ui(ui, |ui| {
+                            ui.button("Hello")
+                                .on_hover_text("This is a button");
+                            ui.button("World")
+                                .on_hover_text("This is a button");
+                        }).response
+                }),
+            ),
+            (
                 egui::Pos2::new(60.0, 60.0),
                 Box::new(|ui, state| {
                     use egui::epaint::*;
@@ -103,14 +118,16 @@ impl super::View for PanZoom {
                         Stroke::new(1.0, Color32::YELLOW),
                     ));
 
-                    let mut rotation = state.transform.rotation;
+                    let mut rotation = state.transform.scale_angle_translation().1;
                     let response = ui.add(egui::Slider::new(&mut rotation, -PI..=PI).text("Rotation"));
 
                     if response.changed() {
-                        let screen_center = ui.min_rect().center();
-                        state.transform = TSTransform::from_translation(-screen_center.to_vec2()) *
-                            state.transform * TSTransform::from_rotation(state.transform.rotation - rotation) *
-                            TSTransform::from_translation(screen_center.to_vec2());
+                        let screen_center = ui.min_rect().center() + vec2(0.0, 100.0);
+                        state.transform =
+                            TSTransform::from_translation(vec2(-60.0, -60.0)) *
+                            TSTransform::from_translation(screen_center.to_vec2())
+                                * TSTransform::from_rotation(rotation)
+                        * TSTransform::from_translation(vec2(-60.0, -60.0))
                     }
 
                     response

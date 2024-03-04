@@ -360,6 +360,7 @@ impl Shape {
     /// If using a [`PaintCallback`], note that only the rect is scaled as opposed
     /// to other shapes where the stroke is also scaled.
     pub fn transform(&mut self, transform: TSTransform) {
+        let (scale, angle, translation) = transform.scale_angle_translation();
         match self {
             Self::Noop => {}
             Self::Vec(shapes) => {
@@ -369,43 +370,43 @@ impl Shape {
             }
             Self::Circle(circle_shape) => {
                 circle_shape.center = transform * circle_shape.center;
-                circle_shape.radius *= transform.scaling;
-                circle_shape.stroke.width *= transform.scaling;
+                circle_shape.radius *= scale;
+                circle_shape.stroke.width *= scale;
             }
             Self::LineSegment { points, stroke } => {
                 for p in points {
                     *p = transform * *p;
                 }
-                stroke.width *= transform.scaling;
+                stroke.width *= scale;
             }
             Self::Path(path_shape) => {
                 for p in &mut path_shape.points {
                     *p = transform * *p;
                 }
-                path_shape.stroke.width *= transform.scaling;
+                path_shape.stroke.width *= scale;
             }
             Self::Rect(rect_shape) => {
                 //rect_shape.angle += transform.rotation;
                 let (rect, angle) = transform.mul_rect(rect_shape.rect);
                 rect_shape.rect = rect;
                 rect_shape.angle += angle;
-                rect_shape.stroke.width *= transform.scaling;
+                rect_shape.stroke.width *= scale;
             }
             Self::Text(text_shape) => {
                 text_shape.pos = transform * text_shape.pos;
-                text_shape.angle += transform.rotation;
+                text_shape.angle += angle;
 
                 // Scale text:
                 let galley = Arc::make_mut(&mut text_shape.galley);
                 for row in &mut galley.rows {
-                    row.visuals.mesh_bounds = transform.scaling * row.visuals.mesh_bounds;
+                    row.visuals.mesh_bounds = scale * row.visuals.mesh_bounds;
                     for v in &mut row.visuals.mesh.vertices {
-                        v.pos = Pos2::new(transform.scaling * v.pos.x, transform.scaling * v.pos.y);
+                        v.pos = Pos2::new(scale * v.pos.x, scale * v.pos.y);
                     }
                 }
 
-                galley.mesh_bounds = transform.scaling * galley.mesh_bounds;
-                galley.rect = transform.scaling * galley.rect;
+                galley.mesh_bounds = scale * galley.mesh_bounds;
+                galley.rect = scale * galley.rect;
             }
             Self::Mesh(mesh) => {
                 mesh.transform(transform);
@@ -414,13 +415,13 @@ impl Shape {
                 bezier_shape.points[0] = transform * bezier_shape.points[0];
                 bezier_shape.points[1] = transform * bezier_shape.points[1];
                 bezier_shape.points[2] = transform * bezier_shape.points[2];
-                bezier_shape.stroke.width *= transform.scaling;
+                bezier_shape.stroke.width *= scale;
             }
             Self::CubicBezier(cubic_curve) => {
                 for p in &mut cubic_curve.points {
                     *p = transform * *p;
                 }
-                cubic_curve.stroke.width *= transform.scaling;
+                cubic_curve.stroke.width *= scale;
             }
             Self::Callback(shape) => {
                 shape.rect = transform.mul_rect(shape.rect).0; // TODO: How should this possibly work=

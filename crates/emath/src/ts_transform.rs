@@ -1,4 +1,5 @@
-use crate::{Pos2, pos2, Rect, Vec2};
+use glam::Affine2;
+use crate::{Pos2, pos2, Rect, Vec2, vec2};
 
 /// Linearly transforms positions via a translation, then a scaling.
 ///
@@ -7,17 +8,8 @@ use crate::{Pos2, pos2, Rect, Vec2};
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[cfg_attr(feature = "bytemuck", derive(bytemuck::Pod, bytemuck::Zeroable))]
-pub struct TSTransform {
-    /// Scaling applied first, scaled around (0, 0).
-    pub scaling: f32,
-
-    /// Translation amount, applied after scaling.
-    pub translation: Vec2,
-
-    /// Rotation amount, applied after scaling.
-    pub rotation: f32,
-}
+//#[cfg_attr(feature = "bytemuck", derive(bytemuck::Pod, bytemuck::Zeroable))]
+pub struct TSTransform(pub glam::Affine2);
 
 impl Eq for TSTransform {}
 
@@ -29,26 +21,22 @@ impl Default for TSTransform {
 }
 
 impl TSTransform {
-    pub const IDENTITY: Self = Self {
-        translation: Vec2::ZERO,
-        scaling: 1.0,
-        rotation: 0.0,
-    };
+    pub const IDENTITY: Self = Self(glam::Affine2::IDENTITY);
 
     #[inline]
     /// Creates a new translation that first scales points around
-    /// `(0, 0)`, then translates them.  
+    /// `(0, 0)`, then translates them.
     pub fn new(translation: Vec2, scaling: f32, rotation: f32) -> Self {
-        Self {
-            translation,
-            scaling,
+        Self(glam::Affine2::from_scale_angle_translation(
+            glam::Vec2::new(scaling, scaling),
             rotation,
-        }
+            glam::Vec2::new(translation.x, translation.y),
+        ))
     }
 
     #[inline]
     pub fn from_translation(translation: Vec2) -> Self {
-        Self::new(translation, 1.0, 0.0)
+        Self(glam::Affine2::from_translation(glam::Vec2::new(translation.x, translation.y)))
     }
 
     #[inline]
@@ -76,11 +64,7 @@ impl TSTransform {
     /// ```
     #[inline]
     pub fn inverse(&self) -> Self {
-        Self {
-            scaling: 1.0 / self.scaling,
-            translation: -self.translation / self.scaling,
-            rotation: -self.rotation,
-        }
+        Self(self.0.inverse())
     }
 
     /// Transforms the given coordinate.
@@ -95,10 +79,8 @@ impl TSTransform {
     /// ```
     #[inline]
     pub fn mul_pos(&self, pos: Pos2) -> Pos2 {
-        let pos = self.scaling * pos + self.translation;
-        let x = pos.x * self.rotation.cos() - pos.y * self.rotation.sin();
-        let y = pos.x * self.rotation.sin() + pos.y * self.rotation.cos();
-        pos2(x, y)
+        let p = self.0.transform_point2(glam::Vec2::new(pos.x, pos.y));
+        pos2(p.x, p.y)
     }
 
     /// Transforms the given rectangle.
@@ -113,10 +95,29 @@ impl TSTransform {
     /// ```
     #[inline]
     pub fn mul_rect(&self, rect: Rect) -> (Rect, f32) {
-        (Rect {
-            min: self.scaling * rect.min + self.translation,
-            max: self.scaling * rect.max + self.translation,
-        }, self.rotation)
+        let (scale, angle, translation) = self.0.to_scale_angle_translation();
+
+        let (scale, _, translation) = (Affine2::from_angle(-angle) * self.0).to_scale_angle_translation();
+        (
+            Rect {
+                min: scale.x * rect.min + vec2(translation.x, translation.y),
+                max: scale.x * rect.max + vec2(translation.x, translation.y),
+            },
+            angle,
+        )
+    }
+
+    pub fn scaling(&self) -> f32 {
+        self.scale_angle_translation().0
+    }
+
+    pub fn scale_angle_translation(&self) -> (f32, f32, Vec2) {
+        let (
+            scale,
+            rotation,
+            translation,
+        ) = self.0.to_scale_angle_translation();
+        (scale.x, rotation, vec2(translation.x, translation.y))
     }
 }
 
@@ -155,10 +156,6 @@ impl std::ops::Mul<Self> for TSTransform {
     /// ```
     fn mul(self, rhs: Self) -> Self::Output {
         // Apply rhs first.
-        Self {
-            scaling: self.scaling * rhs.scaling,
-            translation: self.scaling * (rhs.translation + self.rotation * rhs.translation) + self.translation,
-            rotation: self.rotation + rhs.rotation,
-        }
+        Self(self.0 * rhs.0)
     }
 }
