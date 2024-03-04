@@ -2358,7 +2358,7 @@ impl Context {
     pub fn rect_contains_pointer(&self, layer_id: LayerId, rect: Rect) -> bool {
         let rect =
             if let Some(transform) = self.memory(|m| m.layer_transforms.get(&layer_id).cloned()) {
-                transform * rect
+                rect // TODO: Transform mouse position instead?
             } else {
                 rect
             };
@@ -2369,6 +2369,12 @@ impl Context {
         let pointer_pos = self.input(|i| i.pointer.interact_pos());
         let Some(pointer_pos) = pointer_pos else {
             return false;
+        };
+
+        let pointer_pos = if let Some(transform) = self.memory(|m| m.layer_transforms.get(&layer_id).cloned()) {
+            transform.inverse() * pointer_pos
+        } else {
+            pointer_pos
         };
 
         if !rect.contains(pointer_pos) {

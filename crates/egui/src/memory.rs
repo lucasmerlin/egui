@@ -935,7 +935,7 @@ impl Areas {
                         }
 
                         if let Some(transform) = layer_transforms.get(layer) {
-                            rect = *transform * rect;
+                            rect = transform.mul_rect(rect).0;
                         }
 
                         if rect.contains(pos) {

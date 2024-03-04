@@ -385,11 +385,15 @@ impl Shape {
                 path_shape.stroke.width *= transform.scaling;
             }
             Self::Rect(rect_shape) => {
-                rect_shape.rect = transform * rect_shape.rect;
+                //rect_shape.angle += transform.rotation;
+                let (rect, angle) = transform.mul_rect(rect_shape.rect);
+                rect_shape.rect = rect;
+                rect_shape.angle += angle;
                 rect_shape.stroke.width *= transform.scaling;
             }
             Self::Text(text_shape) => {
                 text_shape.pos = transform * text_shape.pos;
+                text_shape.angle += transform.rotation;
 
                 // Scale text:
                 let galley = Arc::make_mut(&mut text_shape.galley);
@@ -419,7 +423,7 @@ impl Shape {
                 cubic_curve.stroke.width *= transform.scaling;
             }
             Self::Callback(shape) => {
-                shape.rect = transform * shape.rect;
+                shape.rect = transform.mul_rect(shape.rect).0; // TODO: How should this possibly work=
             }
         }
     }
@@ -589,6 +593,8 @@ pub struct RectShape {
     ///
     /// Use [`Rect::ZERO`] to turn off texturing.
     pub uv: Rect,
+
+    pub angle: f32,
 }
 
 impl RectShape {
@@ -606,6 +612,7 @@ impl RectShape {
             stroke: stroke.into(),
             fill_texture_id: Default::default(),
             uv: Rect::ZERO,
+            angle: 0.0,
         }
     }
 
@@ -622,6 +629,7 @@ impl RectShape {
             stroke: Default::default(),
             fill_texture_id: Default::default(),
             uv: Rect::ZERO,
+            angle: 0.0,
         }
     }
 
@@ -634,6 +642,7 @@ impl RectShape {
             stroke: stroke.into(),
             fill_texture_id: Default::default(),
             uv: Rect::ZERO,
+            angle: 0.0,
         }
     }
 

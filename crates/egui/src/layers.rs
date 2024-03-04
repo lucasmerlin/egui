@@ -161,7 +161,7 @@ impl PaintList {
     /// Transform each [`Shape`] and clip rectangle by this much, in-place
     pub fn transform(&mut self, transform: TSTransform) {
         for ClippedShape { clip_rect, shape } in &mut self.0 {
-            *clip_rect = transform.mul_rect(*clip_rect);
+            *clip_rect = transform.mul_rect(*clip_rect).0;
             shape.transform(transform);
         }
     }
@@ -217,7 +217,7 @@ impl GraphicLayers {
                     if let Some(list) = order_map.get_mut(&layer_id.id) {
                         if let Some(transform) = transforms.get(layer_id) {
                             for clipped_shape in &mut list.0 {
-                                clipped_shape.clip_rect = *transform * clipped_shape.clip_rect;
+                                clipped_shape.clip_rect = transform.mul_rect(clipped_shape.clip_rect).0;
                                 clipped_shape.shape.transform(*transform);
                             }
                         }
@@ -232,7 +232,7 @@ impl GraphicLayers {
 
                 if let Some(transform) = transforms.get(&layer_id) {
                     for clipped_shape in &mut list.0 {
-                        clipped_shape.clip_rect = *transform * clipped_shape.clip_rect;
+                        clipped_shape.clip_rect = transform.mul_rect(clipped_shape.clip_rect).0;
                         clipped_shape.shape.transform(*transform);
                     }
                 }

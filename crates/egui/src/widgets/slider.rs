@@ -745,6 +745,7 @@ impl<'a> Slider<'a> {
                         rounding: visuals.rounding,
                         fill_texture_id: Default::default(),
                         uv: Rect::ZERO,
+                        angle: 0.0,
                     });
                 }
             }

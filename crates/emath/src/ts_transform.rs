@@ -1,4 +1,4 @@
-use crate::{Pos2, Rect, Vec2};
+use crate::{Pos2, pos2, Rect, Vec2};
 
 /// Linearly transforms positions via a translation, then a scaling.
 ///
@@ -14,6 +14,9 @@ pub struct TSTransform {
 
     /// Translation amount, applied after scaling.
     pub translation: Vec2,
+
+    /// Rotation amount, applied after scaling.
+    pub rotation: f32,
 }
 
 impl Eq for TSTransform {}
@@ -29,26 +32,33 @@ impl TSTransform {
     pub const IDENTITY: Self = Self {
         translation: Vec2::ZERO,
         scaling: 1.0,
+        rotation: 0.0,
     };
 
     #[inline]
     /// Creates a new translation that first scales points around
     /// `(0, 0)`, then translates them.  
-    pub fn new(translation: Vec2, scaling: f32) -> Self {
+    pub fn new(translation: Vec2, scaling: f32, rotation: f32) -> Self {
         Self {
             translation,
             scaling,
+            rotation,
         }
     }
 
     #[inline]
     pub fn from_translation(translation: Vec2) -> Self {
-        Self::new(translation, 1.0)
+        Self::new(translation, 1.0, 0.0)
     }
 
     #[inline]
     pub fn from_scaling(scaling: f32) -> Self {
-        Self::new(Vec2::ZERO, scaling)
+        Self::new(Vec2::ZERO, scaling, 0.0)
+    }
+
+    #[inline]
+    pub fn from_rotation(rotation: f32) -> Self {
+        Self::new(Vec2::ZERO, 1.0, rotation)
     }
 
     /// Inverts the transform.
@@ -66,7 +76,11 @@ impl TSTransform {
     /// ```
     #[inline]
     pub fn inverse(&self) -> Self {
-        Self::new(-self.translation / self.scaling, 1.0 / self.scaling)
+        Self {
+            scaling: 1.0 / self.scaling,
+            translation: -self.translation / self.scaling,
+            rotation: -self.rotation,
+        }
     }
 
     /// Transforms the given coordinate.
@@ -81,7 +95,10 @@ impl TSTransform {
     /// ```
     #[inline]
     pub fn mul_pos(&self, pos: Pos2) -> Pos2 {
-        self.scaling * pos + self.translation
+        let pos = self.scaling * pos + self.translation;
+        let x = pos.x * self.rotation.cos() - pos.y * self.rotation.sin();
+        let y = pos.x * self.rotation.sin() + pos.y * self.rotation.cos();
+        pos2(x, y)
     }
 
     /// Transforms the given rectangle.
@@ -95,11 +112,11 @@ impl TSTransform {
     /// assert_eq!(transformed.max, pos2(46.0, 30.0));
     /// ```
     #[inline]
-    pub fn mul_rect(&self, rect: Rect) -> Rect {
-        Rect {
-            min: self.mul_pos(rect.min),
-            max: self.mul_pos(rect.max),
-        }
+    pub fn mul_rect(&self, rect: Rect) -> (Rect, f32) {
+        (Rect {
+            min: self.scaling * rect.min + self.translation,
+            max: self.scaling * rect.max + self.translation,
+        }, self.rotation)
     }
 }
 
@@ -113,15 +130,15 @@ impl std::ops::Mul<Pos2> for TSTransform {
     }
 }
 
-/// Transforms the rectangle.
-impl std::ops::Mul<Rect> for TSTransform {
-    type Output = Rect;
-
-    #[inline]
-    fn mul(self, rect: Rect) -> Rect {
-        self.mul_rect(rect)
-    }
-}
+// /// Transforms the rectangle.
+// impl std::ops::Mul<Rect> for TSTransform {
+//     type Output = Rect;
+//
+//     #[inline]
+//     fn mul(self, rect: Rect) -> Rect {
+//         self.mul_rect(rect)
+//     }
+// }
 
 impl std::ops::Mul<Self> for TSTransform {
     type Output = Self;
@@ -140,7 +157,8 @@ impl std::ops::Mul<Self> for TSTransform {
         // Apply rhs first.
         Self {
             scaling: self.scaling * rhs.scaling,
-            translation: self.translation + self.scaling * rhs.translation,
+            translation: self.scaling * (rhs.translation + self.rotation * rhs.translation) + self.translation,
+            rotation: self.rotation + rhs.rotation,
         }
     }
 }

@@ -329,6 +329,13 @@ impl Path {
         self.0.reserve(additional);
     }
 
+    pub fn translate(&mut self, transform: TSTransform) {
+        for p in &mut self.0 {
+            p.pos = transform * p.pos;
+            p.normal =p.normal; // TODO: Rotate normal
+        }
+    }
+
     #[inline(always)]
     pub fn add_point(&mut self, pos: Pos2, normal: Vec2) {
         self.0.push(PathPoint { pos, normal });
@@ -1416,6 +1423,7 @@ impl Tessellator {
             stroke,
             fill_texture_id,
             uv,
+            angle,
         } = *rect;
 
         if self.options.coarse_tessellation_culling
@@ -1457,6 +1465,12 @@ impl Tessellator {
             path.clear();
             path::rounded_rectangle(&mut self.scratchpad_points, rect, rounding);
             path.add_line_loop(&self.scratchpad_points);
+
+            path.translate(TSTransform {
+                scaling: 1.0,
+                rotation: angle,
+                translation: Vec2::ZERO,
+            });
 
             if uv.is_positive() {
                 // Textured

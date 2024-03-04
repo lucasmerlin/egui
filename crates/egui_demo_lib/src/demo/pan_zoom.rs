@@ -1,3 +1,4 @@
+use std::f32::consts::PI;
 use egui::emath::TSTransform;
 
 #[derive(Clone, Default, PartialEq)]
@@ -102,7 +103,17 @@ impl super::View for PanZoom {
                         Stroke::new(1.0, Color32::YELLOW),
                     ));
 
-                    ui.add(egui::Slider::new(&mut state.drag_value, 0.0..=100.0).text("My value"))
+                    let mut rotation = state.transform.rotation;
+                    let response = ui.add(egui::Slider::new(&mut rotation, -PI..=PI).text("Rotation"));
+
+                    if response.changed() {
+                        let screen_center = ui.min_rect().center();
+                        state.transform = TSTransform::from_translation(-screen_center.to_vec2()) *
+                            state.transform * TSTransform::from_rotation(state.transform.rotation - rotation) *
+                            TSTransform::from_translation(screen_center.to_vec2());
+                    }
+
+                    response
                 }),
             ),
         ]
@@ -115,7 +126,7 @@ impl super::View for PanZoom {
                 // but may also cover over other windows.
                 .order(egui::Order::Foreground)
                 .show(ui.ctx(), |ui| {
-                    ui.set_clip_rect(transform.inverse() * rect);
+                    ui.set_clip_rect(transform.inverse().mul_rect(rect).0);
                     egui::Frame::default()
                         .rounding(egui::Rounding::same(4.0))
                         .inner_margin(egui::Margin::same(8.0))

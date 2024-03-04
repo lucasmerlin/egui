@@ -744,19 +744,17 @@ pub fn paint_texture_at(
 
     match options.rotation {
         Some((rot, origin)) => {
-            // TODO(emilk): implement this using `PathShape` (add texture support to it).
-            // This will also give us anti-aliasing of rotated images.
-            egui_assert!(
-                options.rounding == Rounding::ZERO,
-                "Image had both rounding and rotation. Please pick only one"
-            );
-
-            let mut mesh = Mesh::with_texture(texture.id);
-            mesh.add_rect_with_uv(rect, options.uv, options.tint);
-            mesh.rotate(rot, rect.min + origin * rect.size());
-            painter.add(Shape::mesh(mesh));
-        }
-        None => {
+            // // TODO(emilk): implement this using `PathShape` (add texture support to it).
+            // // This will also give us anti-aliasing of rotated images.
+            // egui_assert!(
+            //     options.rounding == Rounding::ZERO,
+            //     "Image had both rounding and rotation. Please pick only one"
+            // );
+            //
+            // let mut mesh = Mesh::with_texture(texture.id);
+            // mesh.add_rect_with_uv(rect, options.uv, options.tint);
+            // mesh.rotate(rot, rect.min + origin * rect.size());
+            // painter.add(Shape::mesh(mesh));
             painter.add(RectShape {
                 rect,
                 rounding: options.rounding,
@@ -764,7 +762,10 @@ pub fn paint_texture_at(
                 stroke: Stroke::NONE,
                 fill_texture_id: texture.id,
                 uv: options.uv,
+                angle: rot.angle()
             });
+        }
+        None => {
         }
     }
 }

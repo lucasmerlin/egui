@@ -33,6 +33,7 @@ pub fn adjust_colors(shape: &mut Shape, adjust_color: &impl Fn(&mut Color32)) {
             stroke,
             fill_texture_id: _,
             uv: _,
+            angle: _,
         })
         | Shape::QuadraticBezier(QuadraticBezierShape {
             points: _,
