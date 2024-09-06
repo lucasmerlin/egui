@@ -841,6 +841,7 @@ fn resize_interaction(
                 interact_rect: rect,
                 sense: Sense::drag(),
                 enabled: true,
+                parent_ui_id: None,
             },
             true,
         );

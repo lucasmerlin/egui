@@ -165,6 +165,7 @@ impl Ui {
                 interact_rect: start_rect,
                 sense,
                 enabled: ui.enabled,
+                parent_ui_id: None,
             },
             true,
         );
@@ -299,6 +300,7 @@ impl Ui {
                 interact_rect: start_rect,
                 sense,
                 enabled: child_ui.enabled,
+                parent_ui_id: Some(self.id),
             },
             true,
         );
@@ -977,6 +979,7 @@ impl Ui {
                 interact_rect: self.clip_rect().intersect(rect),
                 sense,
                 enabled: self.enabled,
+                parent_ui_id: Some(self.id),
             },
             true,
         )
@@ -1044,6 +1047,7 @@ impl Ui {
                 interact_rect: self.clip_rect().intersect(self.min_rect()),
                 sense: self.sense,
                 enabled: self.enabled,
+                parent_ui_id: S,
             },
             false,
         )

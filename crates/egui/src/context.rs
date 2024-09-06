@@ -1125,6 +1125,7 @@ impl Context {
             interact_rect,
             sense,
             enabled,
+            parent_ui_id: _,
         } = widget_rect;
 
         // previous frame + "highlight next frame" == "highlight this frame"

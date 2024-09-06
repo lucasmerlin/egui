@@ -20,6 +20,9 @@ pub struct WidgetRect {
     /// What layer the widget is on.
     pub layer_id: LayerId,
 
+    /// The id of the ui this widget was added to.
+    pub parent_ui_id: Option<Id>,
+
     /// The full widget rectangle.
     pub rect: Rect,
 
@@ -53,6 +56,9 @@ pub struct WidgetRects {
 
     /// All widgets, by id, and their order in their respective layer
     by_id: IdMap<(usize, WidgetRect)>,
+
+    /// All widgets, grouped per [`crate::Ui`]
+    by_ui: IdMap<Vec<WidgetRect>>,
 
     /// Info about some widgets.
     ///
@@ -105,6 +111,7 @@ impl WidgetRects {
         let Self {
             by_layer,
             by_id,
+            by_ui,
             infos,
         } = self;
 
@@ -114,6 +121,8 @@ impl WidgetRects {
 
         by_id.clear();
 
+        by_ui.clear();
+
         infos.clear();
     }
 
@@ -122,10 +131,14 @@ impl WidgetRects {
         let Self {
             by_layer,
             by_id,
+            by_ui,
             infos: _,
         } = self;
 
         let layer_widgets = by_layer.entry(layer_id).or_default();
+        let ui_widgets = widget_rect
+            .parent_ui_id
+            .map(|ui_id| by_ui.entry(ui_id).or_default());
 
         match by_id.entry(widget_rect.id) {
             std::collections::hash_map::Entry::Vacant(entry) => {
@@ -133,6 +146,9 @@ impl WidgetRects {
                 let idx_in_layer = layer_widgets.len();
                 entry.insert((idx_in_layer, widget_rect));
                 layer_widgets.push(widget_rect);
+                if let Some(ui_widgets) = ui_widgets {
+                    ui_widgets.push(widget_rect);
+                }
             }
             std::collections::hash_map::Entry::Occupied(mut entry) => {
                 // This is a known widget, but we might need to update it!
@@ -143,6 +159,10 @@ impl WidgetRects {
                     existing.layer_id == widget_rect.layer_id,
                     "Widget changed layer_id during the frame"
                 );
+                debug_assert!(
+                    existing.parent_ui_id == widget_rect.parent_ui_id,
+                    "Widget changed parent_ui_id during the frame"
+                );
 
                 // Update it:
                 existing.rect = widget_rect.rect; // last wins
@@ -152,6 +172,16 @@ impl WidgetRects {
 
                 if existing.layer_id == widget_rect.layer_id {
                     layer_widgets[*idx_in_layer] = *existing;
+                }
+                if existing.parent_ui_id == widget_rect.parent_ui_id {
+                    // Assuming a widget is usually updated directly after it was added
+                    // this should rarely have to search the whole vec.
+                    if let Some(ui_widgets) = ui_widgets {
+                        let index = ui_widgets.iter().rposition(|w| w.id == widget_rect.id);
+                        if let Some(index) = index {
+                            ui_widgets[index] = *existing;
+                        }
+                    }
                 }
             }
         }

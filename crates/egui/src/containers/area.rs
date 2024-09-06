@@ -470,6 +470,7 @@ impl Area {
                     interact_rect: state.rect(),
                     sense,
                     enabled,
+                    parent_ui_id: None,
                 },
                 true,
             );
