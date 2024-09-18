@@ -262,7 +262,7 @@ impl DemoWindows {
             .show(ctx, |ui| {
                 ui.add_space(4.0);
                 ui.vertical_centered(|ui| {
-                    ui.heading("✒ egui demos");
+                    ui.heading("✒ egui demos (updated)");
                 });
 
                 ui.separator();
