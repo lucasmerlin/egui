@@ -62,18 +62,14 @@ macro_rules! check_for_gl_error {
 /// ```
 #[macro_export]
 macro_rules! check_for_gl_error_even_in_release {
-    ($gl: expr) => {{
-        $crate::check_for_gl_error_impl($gl, file!(), line!(), "")
-    }};
-    ($gl: expr, $context: literal) => {{
-        $crate::check_for_gl_error_impl($gl, file!(), line!(), $context)
-    }};
+    ($gl: expr) => {{ $crate::check_for_gl_error_impl($gl, file!(), line!(), "") }};
+    ($gl: expr, $context: literal) => {{ $crate::check_for_gl_error_impl($gl, file!(), line!(), $context) }};
 }
 
 #[doc(hidden)]
 pub fn check_for_gl_error_impl(gl: &glow::Context, file: &str, line: u32, context: &str) {
     use glow::HasContext as _;
-    #[allow(unsafe_code)]
+    #[expect(unsafe_code)]
     let error_code = unsafe { gl.get_error() };
     if error_code != glow::NO_ERROR {
         let error_str = match error_code {
@@ -110,33 +106,3 @@ pub fn check_for_gl_error_impl(gl: &glow::Context, file: &str, line: u32, contex
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-
-mod profiling_scopes {
-    #![allow(unused_macros)]
-    #![allow(unused_imports)]
-
-    /// Profiling macro for feature "puffin"
-    macro_rules! profile_function {
-        ($($arg: tt)*) => {
-            #[cfg(feature = "puffin")]
-            #[cfg(not(target_arch = "wasm32"))] // Disabled on web because of the coarse 1ms clock resolution there.
-            puffin::profile_function!($($arg)*);
-        };
-    }
-    pub(crate) use profile_function;
-
-    /// Profiling macro for feature "puffin"
-    macro_rules! profile_scope {
-        ($($arg: tt)*) => {
-            #[cfg(feature = "puffin")]
-            #[cfg(not(target_arch = "wasm32"))] // Disabled on web because of the coarse 1ms clock resolution there.
-            puffin::profile_scope!($($arg)*);
-        };
-    }
-    pub(crate) use profile_scope;
-}
-
-#[allow(unused_imports)]
-pub(crate) use profiling_scopes::{profile_function, profile_scope};

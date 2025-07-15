@@ -1,11 +1,11 @@
 use std::{hash::Hash, sync::Arc};
 
+use crate::ClosableTag;
+#[expect(unused_imports)] // Used for doclinks
+use crate::Ui;
 use crate::{Id, LayerId, Layout, Rect, Sense, Style, UiStackInfo};
 
-#[allow(unused_imports)] // Used for doclinks
-use crate::Ui;
-
-/// Build a [`Ui`] as the chlild of another [`Ui`].
+/// Build a [`Ui`] as the child of another [`Ui`].
 ///
 /// By default, everything is inherited from the parent,
 /// except for `max_rect` which by default is set to
@@ -125,6 +125,7 @@ impl UiBuilder {
     }
 
     /// Set if you want sense clicks and/or drags. Default is [`Sense::hover`].
+    ///
     /// The sense will be registered below the Senses of any widgets contained in this [`Ui`], so
     /// if the user clicks a button contained within this [`Ui`], that button will receive the click
     /// instead.
@@ -133,6 +134,21 @@ impl UiBuilder {
     #[inline]
     pub fn sense(mut self, sense: Sense) -> Self {
         self.sense = Some(sense);
+        self
+    }
+
+    /// Make this [`Ui`] closable.
+    ///
+    /// Calling [`Ui::close`] in a child [`Ui`] will mark this [`Ui`] for closing.
+    /// After [`Ui::close`] was called, [`Ui::should_close`] and [`crate::Response::should_close`] will
+    /// return `true` (for this frame).
+    ///
+    /// This works by adding a [`ClosableTag`] to the [`UiStackInfo`].
+    #[inline]
+    pub fn closable(mut self) -> Self {
+        self.ui_stack_info
+            .tags
+            .insert(ClosableTag::NAME, Some(Arc::new(ClosableTag::default())));
         self
     }
 }

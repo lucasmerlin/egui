@@ -91,7 +91,7 @@ pub struct CreationContext<'s> {
     pub(crate) raw_display_handle: Result<RawDisplayHandle, HandleError>,
 }
 
-#[allow(unsafe_code)]
+#[expect(unsafe_code)]
 #[cfg(not(target_arch = "wasm32"))]
 impl HasWindowHandle for CreationContext<'_> {
     fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
@@ -100,7 +100,7 @@ impl HasWindowHandle for CreationContext<'_> {
     }
 }
 
-#[allow(unsafe_code)]
+#[expect(unsafe_code)]
 #[cfg(not(target_arch = "wasm32"))]
 impl HasDisplayHandle for CreationContext<'_> {
     fn display_handle(&self) -> Result<DisplayHandle<'_>, HandleError> {
@@ -109,9 +109,31 @@ impl HasDisplayHandle for CreationContext<'_> {
     }
 }
 
+impl CreationContext<'_> {
+    /// Create a new empty [CreationContext] for testing [App]s in kittest.
+    #[doc(hidden)]
+    pub fn _new_kittest(egui_ctx: egui::Context) -> Self {
+        Self {
+            egui_ctx,
+            integration_info: IntegrationInfo::mock(),
+            storage: None,
+            #[cfg(feature = "glow")]
+            gl: None,
+            #[cfg(feature = "glow")]
+            get_proc_address: None,
+            #[cfg(feature = "wgpu")]
+            wgpu_render_state: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            raw_window_handle: Err(HandleError::NotSupported),
+            #[cfg(not(target_arch = "wasm32"))]
+            raw_display_handle: Err(HandleError::NotSupported),
+        }
+    }
+}
+
 // ----------------------------------------------------------------------------
 
-/// Implement this trait to write apps that can be compiled for both web/wasm and desktop/native using [`eframe`](https://github.com/emilk/egui/tree/master/crates/eframe).
+/// Implement this trait to write apps that can be compiled for both web/wasm and desktop/native using [`eframe`](https://github.com/emilk/egui/tree/main/crates/eframe).
 pub trait App {
     /// Called each time the UI needs repainting, which may be many times per second.
     ///
@@ -364,6 +386,16 @@ pub struct NativeOptions {
     ///
     /// Defaults to true.
     pub dithering: bool,
+
+    /// Android application for `winit`'s event loop.
+    ///
+    /// This value is required on Android to correctly create the event loop. See
+    /// [`EventLoopBuilder::build`] and [`with_android_app`] for details.
+    ///
+    /// [`EventLoopBuilder::build`]: winit::event_loop::EventLoopBuilder::build
+    /// [`with_android_app`]: winit::platform::android::EventLoopBuilderExtAndroid::with_android_app
+    #[cfg(target_os = "android")]
+    pub android_app: Option<winit::platform::android::activity::AndroidApp>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -382,6 +414,9 @@ impl Clone for NativeOptions {
             wgpu_options: self.wgpu_options.clone(),
 
             persistence_path: self.persistence_path.clone(),
+
+            #[cfg(target_os = "android")]
+            android_app: self.android_app.clone(),
 
             ..*self
         }
@@ -424,6 +459,9 @@ impl Default for NativeOptions {
             persistence_path: None,
 
             dithering: true,
+
+            #[cfg(target_os = "android")]
+            android_app: None,
         }
     }
 }
@@ -439,7 +477,7 @@ pub struct WebOptions {
     /// Unused by webgl context as of writing.
     pub depth_buffer: u8,
 
-    /// Which version of WebGl context to select
+    /// Which version of WebGL context to select
     ///
     /// Default: [`WebGlContextOption::BestFirst`].
     #[cfg(feature = "glow")]
@@ -461,10 +499,16 @@ pub struct WebOptions {
     /// If the web event corresponding to an egui event should be propagated
     /// to the rest of the web page.
     ///
-    /// The default is `false`, meaning
+    /// The default is `true`, meaning
     /// [`stopPropagation`](https://developer.mozilla.org/en-US/docs/Web/API/Event/stopPropagation)
-    /// is called on every event.
-    pub should_propagate_event: Box<dyn Fn(&egui::Event) -> bool>,
+    /// is called on every event, and the event is not propagated to the rest of the web page.
+    pub should_stop_propagation: Box<dyn Fn(&egui::Event) -> bool>,
+
+    /// Whether the web event corresponding to an egui event should have `prevent_default` called
+    /// on it or not.
+    ///
+    /// Defaults to true.
+    pub should_prevent_default: Box<dyn Fn(&egui::Event) -> bool>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -481,7 +525,8 @@ impl Default for WebOptions {
 
             dithering: true,
 
-            should_propagate_event: Box::new(|_| false),
+            should_stop_propagation: Box::new(|_| true),
+            should_prevent_default: Box::new(|_| true),
         }
     }
 }
@@ -529,7 +574,9 @@ impl Default for Renderer {
     fn default() -> Self {
         #[cfg(not(feature = "glow"))]
         #[cfg(not(feature = "wgpu"))]
-        compile_error!("eframe: you must enable at least one of the rendering backend features: 'glow' or 'wgpu'");
+        compile_error!(
+            "eframe: you must enable at least one of the rendering backend features: 'glow' or 'wgpu'"
+        );
 
         #[cfg(feature = "glow")]
         #[cfg(not(feature = "wgpu"))]
@@ -572,7 +619,9 @@ impl std::str::FromStr for Renderer {
             #[cfg(feature = "wgpu")]
             "wgpu" => Ok(Self::Wgpu),
 
-            _ => Err(format!("eframe renderer {name:?} is not available. Make sure that the corresponding eframe feature is enabled."))
+            _ => Err(format!(
+                "eframe renderer {name:?} is not available. Make sure that the corresponding eframe feature is enabled."
+            )),
         }
     }
 }
@@ -601,7 +650,8 @@ pub struct Frame {
 
     /// Can be used to manage GPU resources for custom rendering with WGPU using [`egui::PaintCallback`]s.
     #[cfg(feature = "wgpu")]
-    pub(crate) wgpu_render_state: Option<egui_wgpu::RenderState>,
+    #[doc(hidden)]
+    pub wgpu_render_state: Option<egui_wgpu::RenderState>,
 
     /// Raw platform window handle
     #[cfg(not(target_arch = "wasm32"))]
@@ -616,7 +666,7 @@ pub struct Frame {
 #[cfg(not(target_arch = "wasm32"))]
 assert_not_impl_any!(Frame: Clone);
 
-#[allow(unsafe_code)]
+#[expect(unsafe_code)]
 #[cfg(not(target_arch = "wasm32"))]
 impl HasWindowHandle for Frame {
     fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
@@ -625,7 +675,7 @@ impl HasWindowHandle for Frame {
     }
 }
 
-#[allow(unsafe_code)]
+#[expect(unsafe_code)]
 #[cfg(not(target_arch = "wasm32"))]
 impl HasDisplayHandle for Frame {
     fn display_handle(&self) -> Result<DisplayHandle<'_>, HandleError> {
@@ -635,10 +685,29 @@ impl HasDisplayHandle for Frame {
 }
 
 impl Frame {
+    /// Create a new empty [Frame] for testing [App]s in kittest.
+    #[doc(hidden)]
+    pub fn _new_kittest() -> Self {
+        Self {
+            #[cfg(feature = "glow")]
+            gl: None,
+            #[cfg(all(feature = "glow", not(target_arch = "wasm32")))]
+            glow_register_native_texture: None,
+            info: IntegrationInfo::mock(),
+            #[cfg(not(target_arch = "wasm32"))]
+            raw_display_handle: Err(HandleError::NotSupported),
+            #[cfg(not(target_arch = "wasm32"))]
+            raw_window_handle: Err(HandleError::NotSupported),
+            storage: None,
+            #[cfg(feature = "wgpu")]
+            wgpu_render_state: None,
+        }
+    }
+
     /// True if you are in a web environment.
     ///
     /// Equivalent to `cfg!(target_arch = "wasm32")`
-    #[allow(clippy::unused_self)]
+    #[expect(clippy::unused_self)]
     pub fn is_web(&self) -> bool {
         cfg!(target_arch = "wasm32")
     }
@@ -772,11 +841,33 @@ pub struct IntegrationInfo {
     ///
     /// This includes [`App::update`] as well as rendering (except for vsync waiting).
     ///
-    /// For a more detailed view of cpu usage, use the [`puffin`](https://crates.io/crates/puffin)
-    /// profiler together with the `puffin` feature of `eframe`.
+    /// For a more detailed view of cpu usage, connect your preferred profiler by enabling it's feature in [`profiling`](https://crates.io/crates/profiling).
     ///
     /// `None` if this is the first frame.
     pub cpu_usage: Option<f32>,
+}
+
+impl IntegrationInfo {
+    fn mock() -> Self {
+        Self {
+            #[cfg(target_arch = "wasm32")]
+            web_info: WebInfo {
+                user_agent: "kittest".to_owned(),
+                location: Location {
+                    url: "http://localhost".to_owned(),
+                    protocol: "http:".to_owned(),
+                    host: "localhost".to_owned(),
+                    hostname: "localhost".to_owned(),
+                    port: "80".to_owned(),
+                    hash: String::new(),
+                    query: String::new(),
+                    query_map: Default::default(),
+                    origin: "http://localhost".to_owned(),
+                },
+            },
+            cpu_usage: None,
+        }
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -798,24 +889,10 @@ pub trait Storage {
     fn flush(&mut self);
 }
 
-/// Stores nothing.
-#[derive(Clone, Default)]
-pub(crate) struct DummyStorage {}
-
-impl Storage for DummyStorage {
-    fn get_string(&self, _key: &str) -> Option<String> {
-        None
-    }
-
-    fn set_string(&mut self, _key: &str, _value: String) {}
-
-    fn flush(&mut self) {}
-}
-
 /// Get and deserialize the [RON](https://github.com/ron-rs/ron) stored at the given key.
 #[cfg(feature = "ron")]
 pub fn get_value<T: serde::de::DeserializeOwned>(storage: &dyn Storage, key: &str) -> Option<T> {
-    crate::profile_function!(key);
+    profiling::function_scope!(key);
     storage
         .get_string(key)
         .and_then(|value| match ron::from_str(&value) {
@@ -831,7 +908,7 @@ pub fn get_value<T: serde::de::DeserializeOwned>(storage: &dyn Storage, key: &st
 /// Serialize the given value as [RON](https://github.com/ron-rs/ron) and store with the given key.
 #[cfg(feature = "ron")]
 pub fn set_value<T: serde::Serialize>(storage: &mut dyn Storage, key: &str, value: &T) {
-    crate::profile_function!(key);
+    profiling::function_scope!(key);
     match ron::ser::to_string(value) {
         Ok(string) => storage.set_string(key, string),
         Err(err) => log::error!("eframe failed to encode data using ron: {}", err),

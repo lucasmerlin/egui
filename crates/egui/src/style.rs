@@ -2,16 +2,16 @@
 
 #![allow(clippy::if_same_then_else)]
 
+use emath::Align;
+use epaint::{AlphaFromCoverage, CornerRadius, Shadow, Stroke, text::FontTweak};
 use std::{collections::BTreeMap, ops::RangeInclusive, sync::Arc};
 
-use emath::Align;
-use epaint::{text::FontTweak, Rounding, Shadow, Stroke};
-
 use crate::{
-    ecolor::Color32,
-    emath::{pos2, vec2, Rangef, Rect, Vec2},
     ComboBox, CursorIcon, FontFamily, FontId, Grid, Margin, Response, RichText, TextWrapMode,
     WidgetText,
+    ecolor::Color32,
+    emath::{Rangef, Rect, Vec2, pos2, vec2},
+    reset_button_with,
 };
 
 /// How to format numbers in e.g. a [`crate::DragValue`].
@@ -174,6 +174,49 @@ impl From<TextStyle> for FontSelection {
 
 // ----------------------------------------------------------------------------
 
+/// Utility to modify a [`Style`] in some way.
+/// Constructed via [`StyleModifier::from`] from a `Fn(&mut Style)` or a [`Style`].
+#[derive(Clone, Default)]
+pub struct StyleModifier(Option<Arc<dyn Fn(&mut Style) + Send + Sync>>);
+
+impl std::fmt::Debug for StyleModifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("StyleModifier")
+    }
+}
+
+impl<T> From<T> for StyleModifier
+where
+    T: Fn(&mut Style) + Send + Sync + 'static,
+{
+    fn from(f: T) -> Self {
+        Self(Some(Arc::new(f)))
+    }
+}
+
+impl From<Style> for StyleModifier {
+    fn from(style: Style) -> Self {
+        Self(Some(Arc::new(move |s| *s = style.clone())))
+    }
+}
+
+impl StyleModifier {
+    /// Create a new [`StyleModifier`] from a function.
+    pub fn new(f: impl Fn(&mut Style) + Send + Sync + 'static) -> Self {
+        Self::from(f)
+    }
+
+    /// Apply the modification to the given [`Style`].
+    /// Usually used with [`Ui::style_mut`].
+    pub fn apply(&self, style: &mut Style) {
+        if let Some(f) = &self.0 {
+            f(style);
+        }
+    }
+}
+
+// ----------------------------------------------------------------------------
+
 /// Specifies the look and feel of egui.
 ///
 /// You can change the visuals of a [`Ui`] with [`Ui::style_mut`]
@@ -288,8 +331,11 @@ pub struct Style {
     /// If true and scrolling is enabled for only one direction, allow horizontal scrolling without pressing shift
     pub always_scroll_the_only_direction: bool,
 
-    /// The animation that should be used when scrolling a [`crate::ScrollArea`] using e.g. [Ui::scroll_to_rect].
+    /// The animation that should be used when scrolling a [`crate::ScrollArea`] using e.g. [`Ui::scroll_to_rect`].
     pub scroll_animation: ScrollAnimation,
+
+    /// Use a more compact style for menus.
+    pub compact_menu_style: bool,
 }
 
 #[test]
@@ -702,7 +748,8 @@ impl ScrollStyle {
 
 // ----------------------------------------------------------------------------
 
-/// Scroll animation configuration, used when programmatically scrolling somewhere (e.g. with `[crate::Ui::scroll_to_cursor]`)
+/// Scroll animation configuration, used when programmatically scrolling somewhere (e.g. with `[crate::Ui::scroll_to_cursor]`).
+///
 /// The animation duration is calculated based on the distance to be scrolled via `[ScrollAnimation::points_per_second]`
 /// and can be clamped to a min / max duration via `[ScrollAnimation::duration]`.
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -874,6 +921,9 @@ pub struct Visuals {
     /// this is more to provide a convenient summary of the rest of the settings.
     pub dark_mode: bool,
 
+    /// ADVANCED: Controls how we render text.
+    pub text_alpha_from_coverage: AlphaFromCoverage,
+
     /// Override default text color for all text.
     ///
     /// This is great for setting the color of text for any widget.
@@ -888,6 +938,17 @@ pub struct Visuals {
     /// but its alpha may be different based on whether or not
     /// it is disabled, non-interactive, hovered etc.
     pub override_text_color: Option<Color32>,
+
+    /// How strong "weak" text is.
+    ///
+    /// Ignored if [`Self::weak_text_color`] is set.
+    pub weak_text_alpha: f32,
+
+    /// Color of "weak" text.
+    ///
+    /// If `None`, the color is [`Self::text_color`]
+    /// multiplied by [`Self::weak_text_alpha`].
+    pub weak_text_color: Option<Color32>,
 
     /// Visual styles of widgets
     pub widgets: Widgets,
@@ -906,6 +967,11 @@ pub struct Visuals {
     /// that needs to look different from other interactive stuff.
     pub extreme_bg_color: Color32,
 
+    /// The background color of [`crate::TextEdit`].
+    ///
+    /// Defaults to [`Self::extreme_bg_color`].
+    pub text_edit_bg_color: Option<Color32>,
+
     /// Background color behind code-styled monospaced labels.
     pub code_bg_color: Color32,
 
@@ -915,7 +981,7 @@ pub struct Visuals {
     /// A good color for error text (e.g. red).
     pub error_fg_color: Color32,
 
-    pub window_rounding: Rounding,
+    pub window_corner_radius: CornerRadius,
     pub window_shadow: Shadow,
     pub window_fill: Color32,
     pub window_stroke: Stroke,
@@ -923,7 +989,7 @@ pub struct Visuals {
     /// Highlight the topmost window.
     pub window_highlight_topmost: bool,
 
-    pub menu_rounding: Rounding,
+    pub menu_corner_radius: CornerRadius,
 
     /// Panel background color
     pub panel_fill: Color32,
@@ -944,7 +1010,7 @@ pub struct Visuals {
     /// Show a background behind collapsing headers.
     pub collapsing_header_frame: bool,
 
-    /// Draw a vertical lien left of indented region, in e.g. [`crate::CollapsingHeader`].
+    /// Draw a vertical line left of indented region, in e.g. [`crate::CollapsingHeader`].
     pub indent_has_left_vline: bool,
 
     /// Whether or not Grids and Tables should be striped by default
@@ -973,6 +1039,9 @@ pub struct Visuals {
 
     /// How to display numeric color values.
     pub numeric_color_space: NumericColorSpace,
+
+    /// How much to modify the alpha of a disabled widget.
+    pub disabled_alpha: f32,
 }
 
 impl Visuals {
@@ -988,12 +1057,18 @@ impl Visuals {
     }
 
     pub fn weak_text_color(&self) -> Color32 {
-        self.gray_out(self.text_color())
+        self.weak_text_color
+            .unwrap_or_else(|| self.text_color().gamma_multiply(self.weak_text_alpha))
     }
 
     #[inline(always)]
     pub fn strong_text_color(&self) -> Color32 {
         self.widgets.active.text_color()
+    }
+
+    /// The background color of [`crate::TextEdit`].
+    pub fn text_edit_bg_color(&self) -> Color32 {
+        self.text_edit_bg_color.unwrap_or(self.extreme_bg_color)
     }
 
     /// Window background color.
@@ -1008,16 +1083,32 @@ impl Visuals {
     }
 
     /// When fading out things, we fade the colors towards this.
-    // TODO(emilk): replace with an alpha
     #[inline(always)]
+    #[deprecated = "Use disabled_alpha(). Fading is now handled by modifying the alpha channel."]
     pub fn fade_out_to_color(&self) -> Color32 {
         self.widgets.noninteractive.weak_bg_fill
     }
 
-    /// Returned a "grayed out" version of the given color.
+    /// Disabled widgets have their alpha modified by this.
+    #[inline(always)]
+    pub fn disabled_alpha(&self) -> f32 {
+        self.disabled_alpha
+    }
+
+    /// Returns a "disabled" version of the given color.
+    ///
+    /// This function modifies the opcacity of the given color.
+    /// If this is undesirable use [`gray_out`](Self::gray_out).
+    #[inline(always)]
+    pub fn disable(&self, color: Color32) -> Color32 {
+        color.gamma_multiply(self.disabled_alpha())
+    }
+
+    /// Returns a "grayed out" version of the given color.
+    #[doc(alias = "grey_out")]
     #[inline(always)]
     pub fn gray_out(&self, color: Color32) -> Color32 {
-        crate::ecolor::tint_color_towards(color, self.fade_out_to_color())
+        crate::ecolor::tint_color_towards(color, self.widgets.noninteractive.weak_bg_fill)
     }
 }
 
@@ -1106,7 +1197,7 @@ pub struct WidgetVisuals {
     pub bg_stroke: Stroke,
 
     /// Button frames etc.
-    pub rounding: Rounding,
+    pub corner_radius: CornerRadius,
 
     /// Stroke and text color of the interactive part of a component (button text, slider grab, check-mark, …).
     pub fg_stroke: Stroke,
@@ -1119,6 +1210,11 @@ impl WidgetVisuals {
     #[inline(always)]
     pub fn text_color(&self) -> Color32 {
         self.fg_stroke.color
+    }
+
+    #[deprecated = "Renamed to corner_radius"]
+    pub fn rounding(&self) -> CornerRadius {
+        self.corner_radius
     }
 }
 
@@ -1167,11 +1263,9 @@ pub struct DebugOptions {
     /// Show interesting widgets under the mouse cursor.
     pub show_widget_hits: bool,
 
-    /// If true, highlight widgets that are not aligned to integer point coordinates.
+    /// If true, highlight widgets that are not aligned to [`emath::GUI_ROUNDING`].
     ///
-    /// It's usually a good idea to keep to integer coordinates to avoid rounding issues.
-    ///
-    /// See <https://github.com/emilk/egui/issues/5163> for more.
+    /// See [`emath::GuiRounding`] for more.
     pub show_unaligned: bool,
 }
 
@@ -1188,7 +1282,7 @@ impl Default for DebugOptions {
             show_resize: false,
             show_interactive_widgets: false,
             show_widget_hits: false,
-            show_unaligned: false,
+            show_unaligned: cfg!(debug_assertions),
         }
     }
 }
@@ -1211,7 +1305,7 @@ pub fn default_text_styles() -> BTreeMap<TextStyle, FontId> {
 
 impl Default for Style {
     fn default() -> Self {
-        #[allow(deprecated)]
+        #[expect(deprecated)]
         Self {
             override_font_id: None,
             override_text_style: None,
@@ -1231,6 +1325,7 @@ impl Default for Style {
             url_in_tooltip: false,
             always_scroll_the_only_direction: false,
             scroll_animation: ScrollAnimation::default(),
+            compact_menu_style: true,
         }
     }
 }
@@ -1239,8 +1334,8 @@ impl Default for Spacing {
     fn default() -> Self {
         Self {
             item_spacing: vec2(8.0, 3.0),
-            window_margin: Margin::same(6.0),
-            menu_margin: Margin::same(6.0),
+            window_margin: Margin::same(6),
+            menu_margin: Margin::same(6),
             button_padding: vec2(4.0, 1.0),
             indent: 18.0, // match checkbox/radio-button with `button_padding.x + icon_width + icon_spacing`
             interact_size: vec2(40.0, 18.0),
@@ -1282,35 +1377,39 @@ impl Visuals {
     pub fn dark() -> Self {
         Self {
             dark_mode: true,
+            text_alpha_from_coverage: AlphaFromCoverage::DARK_MODE_DEFAULT,
             override_text_color: None,
+            weak_text_alpha: 0.6,
+            weak_text_color: None,
             widgets: Widgets::default(),
             selection: Selection::default(),
             hyperlink_color: Color32::from_rgb(90, 170, 255),
             faint_bg_color: Color32::from_additive_luminance(5), // visible, but barely so
             extreme_bg_color: Color32::from_gray(10),            // e.g. TextEdit background
+            text_edit_bg_color: None, // use `extreme_bg_color` by default
             code_bg_color: Color32::from_gray(64),
             warn_fg_color: Color32::from_rgb(255, 143, 0), // orange
             error_fg_color: Color32::from_rgb(255, 0, 0),  // red
 
-            window_rounding: Rounding::same(6.0),
+            window_corner_radius: CornerRadius::same(6),
             window_shadow: Shadow {
-                offset: vec2(10.0, 20.0),
-                blur: 15.0,
-                spread: 0.0,
+                offset: [10, 20],
+                blur: 15,
+                spread: 0,
                 color: Color32::from_black_alpha(96),
             },
             window_fill: Color32::from_gray(27),
             window_stroke: Stroke::new(1.0, Color32::from_gray(60)),
             window_highlight_topmost: true,
 
-            menu_rounding: Rounding::same(6.0),
+            menu_corner_radius: CornerRadius::same(6),
 
             panel_fill: Color32::from_gray(27),
 
             popup_shadow: Shadow {
-                offset: vec2(6.0, 10.0),
-                blur: 8.0,
-                spread: 0.0,
+                offset: [6, 10],
+                blur: 8,
+                spread: 0,
                 color: Color32::from_black_alpha(96),
             },
 
@@ -1333,6 +1432,7 @@ impl Visuals {
             image_loading_spinners: true,
 
             numeric_color_space: NumericColorSpace::GammaByte,
+            disabled_alpha: 0.5,
         }
     }
 
@@ -1340,6 +1440,7 @@ impl Visuals {
     pub fn light() -> Self {
         Self {
             dark_mode: false,
+            text_alpha_from_coverage: AlphaFromCoverage::LIGHT_MODE_DEFAULT,
             widgets: Widgets::light(),
             selection: Selection::light(),
             hyperlink_color: Color32::from_rgb(0, 155, 255),
@@ -1350,9 +1451,9 @@ impl Visuals {
             error_fg_color: Color32::from_rgb(255, 0, 0),  // red
 
             window_shadow: Shadow {
-                offset: vec2(10.0, 20.0),
-                blur: 15.0,
-                spread: 0.0,
+                offset: [10, 20],
+                blur: 15,
+                spread: 0,
                 color: Color32::from_black_alpha(25),
             },
             window_fill: Color32::from_gray(248),
@@ -1361,9 +1462,9 @@ impl Visuals {
             panel_fill: Color32::from_gray(248),
 
             popup_shadow: Shadow {
-                offset: vec2(6.0, 10.0),
-                blur: 8.0,
-                spread: 0.0,
+                offset: [6, 10],
+                blur: 8,
+                spread: 0,
                 color: Color32::from_black_alpha(25),
             },
 
@@ -1413,7 +1514,7 @@ impl Widgets {
                 bg_fill: Color32::from_gray(27),
                 bg_stroke: Stroke::new(1.0, Color32::from_gray(60)), // separators, indentation lines
                 fg_stroke: Stroke::new(1.0, Color32::from_gray(140)), // normal text color
-                rounding: Rounding::same(2.0),
+                corner_radius: CornerRadius::same(2),
                 expansion: 0.0,
             },
             inactive: WidgetVisuals {
@@ -1421,7 +1522,7 @@ impl Widgets {
                 bg_fill: Color32::from_gray(60),      // checkbox background
                 bg_stroke: Default::default(),
                 fg_stroke: Stroke::new(1.0, Color32::from_gray(180)), // button text
-                rounding: Rounding::same(2.0),
+                corner_radius: CornerRadius::same(2),
                 expansion: 0.0,
             },
             hovered: WidgetVisuals {
@@ -1429,7 +1530,7 @@ impl Widgets {
                 bg_fill: Color32::from_gray(70),
                 bg_stroke: Stroke::new(1.0, Color32::from_gray(150)), // e.g. hover over window edge or button
                 fg_stroke: Stroke::new(1.5, Color32::from_gray(240)),
-                rounding: Rounding::same(3.0),
+                corner_radius: CornerRadius::same(3),
                 expansion: 1.0,
             },
             active: WidgetVisuals {
@@ -1437,7 +1538,7 @@ impl Widgets {
                 bg_fill: Color32::from_gray(55),
                 bg_stroke: Stroke::new(1.0, Color32::WHITE),
                 fg_stroke: Stroke::new(2.0, Color32::WHITE),
-                rounding: Rounding::same(2.0),
+                corner_radius: CornerRadius::same(2),
                 expansion: 1.0,
             },
             open: WidgetVisuals {
@@ -1445,7 +1546,7 @@ impl Widgets {
                 bg_fill: Color32::from_gray(27),
                 bg_stroke: Stroke::new(1.0, Color32::from_gray(60)),
                 fg_stroke: Stroke::new(1.0, Color32::from_gray(210)),
-                rounding: Rounding::same(2.0),
+                corner_radius: CornerRadius::same(2),
                 expansion: 0.0,
             },
         }
@@ -1458,7 +1559,7 @@ impl Widgets {
                 bg_fill: Color32::from_gray(248),
                 bg_stroke: Stroke::new(1.0, Color32::from_gray(190)), // separators, indentation lines
                 fg_stroke: Stroke::new(1.0, Color32::from_gray(80)),  // normal text color
-                rounding: Rounding::same(2.0),
+                corner_radius: CornerRadius::same(2),
                 expansion: 0.0,
             },
             inactive: WidgetVisuals {
@@ -1466,7 +1567,7 @@ impl Widgets {
                 bg_fill: Color32::from_gray(230),      // checkbox background
                 bg_stroke: Default::default(),
                 fg_stroke: Stroke::new(1.0, Color32::from_gray(60)), // button text
-                rounding: Rounding::same(2.0),
+                corner_radius: CornerRadius::same(2),
                 expansion: 0.0,
             },
             hovered: WidgetVisuals {
@@ -1474,7 +1575,7 @@ impl Widgets {
                 bg_fill: Color32::from_gray(220),
                 bg_stroke: Stroke::new(1.0, Color32::from_gray(105)), // e.g. hover over window edge or button
                 fg_stroke: Stroke::new(1.5, Color32::BLACK),
-                rounding: Rounding::same(3.0),
+                corner_radius: CornerRadius::same(3),
                 expansion: 1.0,
             },
             active: WidgetVisuals {
@@ -1482,7 +1583,7 @@ impl Widgets {
                 bg_fill: Color32::from_gray(165),
                 bg_stroke: Stroke::new(1.0, Color32::BLACK),
                 fg_stroke: Stroke::new(2.0, Color32::BLACK),
-                rounding: Rounding::same(2.0),
+                corner_radius: CornerRadius::same(2),
                 expansion: 1.0,
             },
             open: WidgetVisuals {
@@ -1490,7 +1591,7 @@ impl Widgets {
                 bg_fill: Color32::from_gray(220),
                 bg_stroke: Stroke::new(1.0, Color32::from_gray(160)),
                 fg_stroke: Stroke::new(1.0, Color32::BLACK),
-                rounding: Rounding::same(2.0),
+                corner_radius: CornerRadius::same(2),
                 expansion: 0.0,
             },
         }
@@ -1506,13 +1607,13 @@ impl Default for Widgets {
 // ----------------------------------------------------------------------------
 
 use crate::{
-    widgets::{reset_button, DragValue, Slider, Widget},
     Ui,
+    widgets::{DragValue, Slider, Widget, reset_button},
 };
 
 impl Style {
     pub fn ui(&mut self, ui: &mut crate::Ui) {
-        #[allow(deprecated)]
+        #[expect(deprecated)]
         let Self {
             override_font_id,
             override_text_style,
@@ -1532,6 +1633,7 @@ impl Style {
             url_in_tooltip,
             always_scroll_the_only_direction,
             scroll_animation,
+            compact_menu_style,
         } = self;
 
         crate::Grid::new("_options").show(ui, |ui| {
@@ -1628,14 +1730,16 @@ impl Style {
             ui.end_row();
         });
 
-        ui.collapsing("🔠 Text Styles", |ui| text_styles_ui(ui, text_styles));
+        ui.collapsing("🔠 Text styles", |ui| text_styles_ui(ui, text_styles));
         ui.collapsing("📏 Spacing", |ui| spacing.ui(ui));
         ui.collapsing("☝ Interaction", |ui| interaction.ui(ui));
         ui.collapsing("🎨 Visuals", |ui| visuals.ui(ui));
-        ui.collapsing("🔄 Scroll Animation", |ui| scroll_animation.ui(ui));
+        ui.collapsing("🔄 Scroll animation", |ui| scroll_animation.ui(ui));
 
         #[cfg(debug_assertions)]
         ui.collapsing("🐛 Debug", |ui| debug.ui(ui));
+
+        ui.checkbox(compact_menu_style, "Compact menu style");
 
         ui.checkbox(explanation_tooltips, "Explanation tooltips")
             .on_hover_text(
@@ -1925,7 +2029,7 @@ impl WidgetVisuals {
             weak_bg_fill,
             bg_fill: mandatory_bg_fill,
             bg_stroke,
-            rounding,
+            corner_radius,
             fg_stroke,
             expansion,
         } = self;
@@ -1949,8 +2053,8 @@ impl WidgetVisuals {
                 ui.add(bg_stroke);
                 ui.end_row();
 
-                ui.label("Rounding");
-                ui.add(rounding);
+                ui.label("Corner radius");
+                ui.add(corner_radius);
                 ui.end_row();
 
                 ui.label("Foreground stroke (text)");
@@ -1968,24 +2072,28 @@ impl WidgetVisuals {
 impl Visuals {
     pub fn ui(&mut self, ui: &mut crate::Ui) {
         let Self {
-            dark_mode: _,
+            dark_mode,
+            text_alpha_from_coverage,
             override_text_color: _,
+            weak_text_alpha,
+            weak_text_color,
             widgets,
             selection,
             hyperlink_color,
             faint_bg_color,
             extreme_bg_color,
+            text_edit_bg_color,
             code_bg_color,
             warn_fg_color,
             error_fg_color,
 
-            window_rounding,
+            window_corner_radius,
             window_shadow,
             window_fill,
             window_stroke,
             window_highlight_topmost,
 
-            menu_rounding,
+            menu_corner_radius,
 
             panel_fill,
 
@@ -2009,44 +2117,115 @@ impl Visuals {
             image_loading_spinners,
 
             numeric_color_space,
+            disabled_alpha,
         } = self;
 
-        ui.collapsing("Background Colors", |ui| {
-            ui_color(ui, &mut widgets.inactive.weak_bg_fill, "Buttons");
-            ui_color(ui, window_fill, "Windows");
-            ui_color(ui, panel_fill, "Panels");
-            ui_color(ui, faint_bg_color, "Faint accent").on_hover_text(
-                "Used for faint accentuation of interactive things, like striped grids.",
-            );
-            ui_color(ui, extreme_bg_color, "Extreme")
-                .on_hover_text("Background of plots and paintings");
+        fn ui_optional_color(
+            ui: &mut Ui,
+            color: &mut Option<Color32>,
+            default_value: Color32,
+            label: impl Into<WidgetText>,
+        ) -> Response {
+            let label_response = ui.label(label);
+
+            ui.horizontal(|ui| {
+                let mut set = color.is_some();
+                ui.checkbox(&mut set, "");
+                if set {
+                    let color = color.get_or_insert(default_value);
+                    ui.color_edit_button_srgba(color);
+                } else {
+                    *color = None;
+                };
+            });
+
+            ui.end_row();
+
+            label_response
+        }
+
+        ui.collapsing("Background colors", |ui| {
+            Grid::new("background_colors")
+                .num_columns(2)
+                .show(ui, |ui| {
+                    fn ui_color(
+                        ui: &mut Ui,
+                        color: &mut Color32,
+                        label: impl Into<WidgetText>,
+                    ) -> Response {
+                        let label_response = ui.label(label);
+                        ui.color_edit_button_srgba(color);
+                        ui.end_row();
+                        label_response
+                    }
+
+                    ui_color(ui, &mut widgets.inactive.weak_bg_fill, "Buttons");
+                    ui_color(ui, window_fill, "Windows");
+                    ui_color(ui, panel_fill, "Panels");
+                    ui_color(ui, faint_bg_color, "Faint accent").on_hover_text(
+                        "Used for faint accentuation of interactive things, like striped grids.",
+                    );
+                    ui_color(ui, extreme_bg_color, "Extreme")
+                        .on_hover_text("Background of plots and paintings");
+
+                    ui_optional_color(ui, text_edit_bg_color, *extreme_bg_color, "TextEdit")
+                        .on_hover_text("Background of TextEdit");
+                });
         });
 
         ui.collapsing("Text color", |ui| {
-            ui_text_color(ui, &mut widgets.noninteractive.fg_stroke.color, "Label");
-            ui_text_color(
-                ui,
-                &mut widgets.inactive.fg_stroke.color,
-                "Unhovered button",
-            );
-            ui_text_color(ui, &mut widgets.hovered.fg_stroke.color, "Hovered button");
-            ui_text_color(ui, &mut widgets.active.fg_stroke.color, "Clicked button");
+            fn ui_text_color(ui: &mut Ui, color: &mut Color32, label: impl Into<RichText>) {
+                ui.label(label.into().color(*color));
+                ui.color_edit_button_srgba(color);
+                ui.end_row();
+            }
 
-            ui_text_color(ui, warn_fg_color, RichText::new("Warnings"));
-            ui_text_color(ui, error_fg_color, RichText::new("Errors"));
+            Grid::new("text_color").num_columns(2).show(ui, |ui| {
+                ui_text_color(ui, &mut widgets.noninteractive.fg_stroke.color, "Label");
 
-            ui_text_color(ui, hyperlink_color, "hyperlink_color");
+                ui_text_color(
+                    ui,
+                    &mut widgets.inactive.fg_stroke.color,
+                    "Unhovered button",
+                );
+                ui_text_color(ui, &mut widgets.hovered.fg_stroke.color, "Hovered button");
+                ui_text_color(ui, &mut widgets.active.fg_stroke.color, "Clicked button");
 
-            ui_color(ui, code_bg_color, RichText::new("Code background").code()).on_hover_ui(
-                |ui| {
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 0.0;
-                        ui.label("For monospaced inlined text ");
-                        ui.code("like this");
-                        ui.label(".");
+                ui_text_color(ui, warn_fg_color, RichText::new("Warnings"));
+                ui_text_color(ui, error_fg_color, RichText::new("Errors"));
+
+                ui_text_color(ui, hyperlink_color, "hyperlink_color");
+
+                ui.label(RichText::new("Code background").code())
+                    .on_hover_ui(|ui| {
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 0.0;
+                            ui.label("For monospaced inlined text ");
+                            ui.code("like this");
+                            ui.label(".");
+                        });
                     });
-                },
-            );
+                ui.color_edit_button_srgba(code_bg_color);
+                ui.end_row();
+
+                ui.label("Weak text alpha");
+                ui.add_enabled(
+                    weak_text_color.is_none(),
+                    DragValue::new(weak_text_alpha).speed(0.01).range(0.0..=1.0),
+                );
+                ui.end_row();
+
+                ui_optional_color(
+                    ui,
+                    weak_text_color,
+                    widgets.noninteractive.text_color(),
+                    "Weak text color",
+                );
+            });
+
+            ui.add_space(4.0);
+
+            text_alpha_from_coverage_ui(ui, text_alpha_from_coverage);
         });
 
         ui.collapsing("Text cursor", |ui| {
@@ -2067,8 +2246,8 @@ impl Visuals {
                     ui.add(window_stroke);
                     ui.end_row();
 
-                    ui.label("Rounding");
-                    ui.add(window_rounding);
+                    ui.label("Corner radius");
+                    ui.add(window_corner_radius);
                     ui.end_row();
 
                     ui.label("Shadow");
@@ -2085,8 +2264,8 @@ impl Visuals {
                 .spacing([12.0, 8.0])
                 .striped(true)
                 .show(ui, |ui| {
-                    ui.label("Rounding");
-                    ui.add(menu_rounding);
+                    ui.label("Corner radius");
+                    ui.add(menu_corner_radius);
                     ui.end_row();
 
                     ui.label("Shadow");
@@ -2137,10 +2316,58 @@ impl Visuals {
                 ui.label("Color picker type");
                 numeric_color_space.toggle_button_ui(ui);
             });
+
+            ui.add(Slider::new(disabled_alpha, 0.0..=1.0).text("Disabled element alpha"));
         });
 
-        ui.vertical_centered(|ui| reset_button(ui, self, "Reset visuals"));
+        let dark_mode = *dark_mode;
+        ui.vertical_centered(|ui| {
+            reset_button_with(
+                ui,
+                self,
+                "Reset visuals",
+                if dark_mode {
+                    Self::dark()
+                } else {
+                    Self::light()
+                },
+            );
+        });
     }
+}
+
+fn text_alpha_from_coverage_ui(ui: &mut Ui, text_alpha_from_coverage: &mut AlphaFromCoverage) {
+    let mut dark_mode_special =
+        *text_alpha_from_coverage == AlphaFromCoverage::TwoCoverageMinusCoverageSq;
+
+    ui.horizontal(|ui| {
+        ui.label("Text rendering:");
+
+        ui.checkbox(&mut dark_mode_special, "Dark-mode special");
+
+        if dark_mode_special {
+            *text_alpha_from_coverage = AlphaFromCoverage::TwoCoverageMinusCoverageSq;
+        } else {
+            let mut gamma = match text_alpha_from_coverage {
+                AlphaFromCoverage::Linear => 1.0,
+                AlphaFromCoverage::Gamma(gamma) => *gamma,
+                AlphaFromCoverage::TwoCoverageMinusCoverageSq => 0.5, // approximately the same
+            };
+
+            ui.add(
+                DragValue::new(&mut gamma)
+                    .speed(0.01)
+                    .range(0.1..=4.0)
+                    .prefix("Gamma: "),
+            );
+
+            if gamma == 1.0 {
+                *text_alpha_from_coverage = AlphaFromCoverage::Linear;
+            } else {
+                *text_alpha_from_coverage = AlphaFromCoverage::Gamma(gamma);
+            }
+        }
+    });
 }
 
 impl TextCursorStyle {
@@ -2256,22 +2483,6 @@ fn two_drag_values(value: &mut Vec2, range: std::ops::RangeInclusive<f32>) -> im
     }
 }
 
-fn ui_color(ui: &mut Ui, color: &mut Color32, label: impl Into<WidgetText>) -> Response {
-    ui.horizontal(|ui| {
-        ui.color_edit_button_srgba(color);
-        ui.label(label);
-    })
-    .response
-}
-
-fn ui_text_color(ui: &mut Ui, color: &mut Color32, label: impl Into<RichText>) -> Response {
-    ui.horizontal(|ui| {
-        ui.color_edit_button_srgba(color);
-        ui.label(label.into().color(*color));
-    })
-    .response
-}
-
 impl HandleShape {
     pub fn ui(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
@@ -2372,16 +2583,24 @@ impl Widget for &mut Margin {
 
         // Apply the checkbox:
         if same {
-            *self = Margin::same((self.left + self.right + self.top + self.bottom) / 4.0);
-        } else if self.is_same() {
-            self.right *= 1.00001; // prevent collapsing into sameness
+            *self =
+                Margin::from((self.leftf() + self.rightf() + self.topf() + self.bottomf()) / 4.0);
+        } else {
+            // Make sure it is not same:
+            if self.is_same() {
+                if self.right == i8::MAX {
+                    self.right = i8::MAX - 1;
+                } else {
+                    self.right += 1;
+                }
+            }
         }
 
         response
     }
 }
 
-impl Widget for &mut Rounding {
+impl Widget for &mut CornerRadius {
     fn ui(self, ui: &mut Ui) -> Response {
         let mut same = self.is_same();
 
@@ -2391,39 +2610,48 @@ impl Widget for &mut Rounding {
 
                 let mut cr = self.nw;
                 ui.add(DragValue::new(&mut cr).range(0.0..=f32::INFINITY));
-                *self = Rounding::same(cr);
+                *self = CornerRadius::same(cr);
             })
             .response
         } else {
             ui.vertical(|ui| {
                 ui.checkbox(&mut same, "same");
 
-                crate::Grid::new("rounding").num_columns(2).show(ui, |ui| {
-                    ui.label("NW");
-                    ui.add(DragValue::new(&mut self.nw).range(0.0..=f32::INFINITY));
-                    ui.end_row();
+                crate::Grid::new("Corner radius")
+                    .num_columns(2)
+                    .show(ui, |ui| {
+                        ui.label("NW");
+                        ui.add(DragValue::new(&mut self.nw).range(0.0..=f32::INFINITY));
+                        ui.end_row();
 
-                    ui.label("NE");
-                    ui.add(DragValue::new(&mut self.ne).range(0.0..=f32::INFINITY));
-                    ui.end_row();
+                        ui.label("NE");
+                        ui.add(DragValue::new(&mut self.ne).range(0.0..=f32::INFINITY));
+                        ui.end_row();
 
-                    ui.label("SW");
-                    ui.add(DragValue::new(&mut self.sw).range(0.0..=f32::INFINITY));
-                    ui.end_row();
+                        ui.label("SW");
+                        ui.add(DragValue::new(&mut self.sw).range(0.0..=f32::INFINITY));
+                        ui.end_row();
 
-                    ui.label("SE");
-                    ui.add(DragValue::new(&mut self.se).range(0.0..=f32::INFINITY));
-                    ui.end_row();
-                });
+                        ui.label("SE");
+                        ui.add(DragValue::new(&mut self.se).range(0.0..=f32::INFINITY));
+                        ui.end_row();
+                    });
             })
             .response
         };
 
         // Apply the checkbox:
         if same {
-            *self = Rounding::same((self.nw + self.ne + self.sw + self.se) / 4.0);
-        } else if self.is_same() {
-            self.se *= 1.00001; // prevent collapsing into sameness
+            *self = CornerRadius::from(self.average());
+        } else {
+            // Make sure we aren't same:
+            if self.is_same() {
+                if self.average() == 0.0 {
+                    self.se = 1;
+                } else {
+                    self.se -= 1;
+                }
+            }
         }
 
         response
@@ -2442,13 +2670,13 @@ impl Widget for &mut Shadow {
         ui.vertical(|ui| {
             crate::Grid::new("shadow_ui").show(ui, |ui| {
                 ui.add(
-                    DragValue::new(&mut offset.x)
+                    DragValue::new(&mut offset[0])
                         .speed(1.0)
                         .range(-100.0..=100.0)
                         .prefix("x: "),
                 );
                 ui.add(
-                    DragValue::new(&mut offset.y)
+                    DragValue::new(&mut offset[1])
                         .speed(1.0)
                         .range(-100.0..=100.0)
                         .prefix("y: "),
@@ -2486,12 +2714,8 @@ impl Widget for &mut Stroke {
 
             // stroke preview:
             let (_id, stroke_rect) = ui.allocate_space(ui.spacing().interact_size);
-            let left = ui
-                .painter()
-                .round_pos_to_pixel_center(stroke_rect.left_center());
-            let right = ui
-                .painter()
-                .round_pos_to_pixel_center(stroke_rect.right_center());
+            let left = stroke_rect.left_center();
+            let right = stroke_rect.right_center();
             ui.painter().line_segment([left, right], (*width, *color));
         })
         .response
@@ -2503,7 +2727,7 @@ impl Widget for &mut crate::Frame {
         let crate::Frame {
             inner_margin,
             outer_margin,
-            rounding,
+            corner_radius,
             shadow,
             fill,
             stroke,
@@ -2523,8 +2747,8 @@ impl Widget for &mut crate::Frame {
                 ui.push_id("outer", |ui| ui.add(outer_margin));
                 ui.end_row();
 
-                ui.label("Rounding");
-                ui.add(rounding);
+                ui.label("Corner radius");
+                ui.add(corner_radius);
                 ui.end_row();
 
                 ui.label("Shadow");

@@ -1,7 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 #![allow(rustdoc::missing_crate_level_docs)] // it's an example
 
-use eframe::egui::{popup_below_widget, CentralPanel, ComboBox, Id, PopupCloseBehavior};
+use eframe::egui::{CentralPanel, ComboBox, Popup, PopupCloseBehavior};
 
 fn main() -> Result<(), eframe::Error> {
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
@@ -14,31 +14,12 @@ fn main() -> Result<(), eframe::Error> {
 struct MyApp {
     checkbox: bool,
     number: u8,
+    numbers: [bool; 10],
 }
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
         CentralPanel::default().show(ctx, |ui| {
-            ui.label("PopupCloseBehavior::CloseOnClickAway popup");
-            let response = ui.button("Open");
-            let popup_id = Id::new("popup_id");
-
-            if response.clicked() {
-                ui.memory_mut(|mem| mem.toggle_popup(popup_id));
-            }
-
-            popup_below_widget(
-                ui,
-                popup_id,
-                &response,
-                PopupCloseBehavior::CloseOnClickOutside,
-                |ui| {
-                    ui.set_min_width(300.0);
-                    ui.label("This popup will be open even if you click the checkbox");
-                    ui.checkbox(&mut self.checkbox, "Checkbox");
-                },
-            );
-
             ui.label("PopupCloseBehavior::CloseOnClick popup");
             ComboBox::from_label("ComboBox")
                 .selected_text(format!("{}", self.number))
@@ -46,6 +27,28 @@ impl eframe::App for MyApp {
                     for num in 0..10 {
                         ui.selectable_value(&mut self.number, num, format!("{num}"));
                     }
+                });
+
+            ui.label("PopupCloseBehavior::CloseOnClickOutside popup");
+            ComboBox::from_label("Ignore Clicks")
+                .close_behavior(PopupCloseBehavior::CloseOnClickOutside)
+                .selected_text("Select Numbers")
+                .show_ui(ui, |ui| {
+                    ui.label("This popup will be open even if you click the checkboxes");
+                    for (i, num) in self.numbers.iter_mut().enumerate() {
+                        ui.checkbox(num, format!("Checkbox {}", i + 1));
+                    }
+                });
+
+            ui.label("PopupCloseBehavior::IgnoreClicks popup");
+            let response = ui.button("Open");
+
+            Popup::menu(&response)
+                .close_behavior(PopupCloseBehavior::IgnoreClicks)
+                .show(|ui| {
+                    ui.set_min_width(310.0);
+                    ui.label("This popup will be open until you press the button again");
+                    ui.checkbox(&mut self.checkbox, "Checkbox");
                 });
         });
     }

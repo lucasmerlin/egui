@@ -1,6 +1,6 @@
 use egui::{
-    pos2, scroll_area::ScrollBarVisibility, Align, Align2, Color32, DragValue, NumExt, Rect,
-    ScrollArea, Sense, Slider, TextStyle, TextWrapMode, Ui, Vec2, Widget,
+    Align, Align2, Color32, DragValue, NumExt as _, Rect, ScrollArea, Sense, Slider, TextStyle,
+    TextWrapMode, Ui, Vec2, Widget as _, pos2, scroll_area::ScrollBarVisibility,
 };
 
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
@@ -222,7 +222,7 @@ fn huge_content_painter(ui: &mut egui::Ui) {
                     font_id.clone(),
                     ui.visuals().text_color(),
                 );
-                used_rect = used_rect.union(text_rect);
+                used_rect |= text_rect;
             }
 
             ui.allocate_rect(used_rect, Sense::hover()); // make sure it is visible!
