@@ -1395,7 +1395,7 @@ impl Visuals {
             weak_text_color: None,
             widgets: Widgets::default(),
             selection: Selection::default(),
-            hyperlink_color: Color32::from_rgb(90, 170, 255),
+            hyperlink_color: Color32::from_rgb(123, 170, 255),
             faint_bg_color: Color32::from_additive_luminance(5), // visible, but barely so
             extreme_bg_color: Color32::from_gray(10),            // e.g. TextEdit background
             text_edit_bg_color: None, // use `extreme_bg_color` by default
