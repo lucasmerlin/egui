@@ -27,15 +27,10 @@ jobs:
         with:
           lfs: true
 
-      - name: Download artifact
-        uses: actions/download-artifact@v5
-        with:
-          artifact-ids: ${{ github.event.inputs.artifact_id }}
-          run-id: ${{ github.event.inputs.run_id }}
-          github-token: ${{ github.token }}
-
       - name: Accept snapshots
-        run: ./scripts/accept_snapshots.sh
+        env:
+          RUN_ID: ${{ github.event.inputs.run_id }}
+        run: ./scripts/update_snapshots_from_ci.sh
 
       - uses: stefanzweifel/git-auto-commit-action@v6
         with:
