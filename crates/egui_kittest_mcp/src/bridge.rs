@@ -19,7 +19,7 @@ use anyhow::{Context as _, anyhow, bail};
 use egui_inspection::protocol::{Frame, HarnessMessage, InspectorCommand, SourceView};
 use egui_inspection::transport::{SocketTarget, generate_socket_target, socket_name};
 use interprocess::local_socket::ListenerOptions;
-use interprocess::local_socket::tokio::{Listener, RecvHalf, SendHalf, prelude::*};
+use interprocess::local_socket::tokio::{Listener, prelude::*};
 use serde::Serialize;
 use tokio::io::{AsyncRead, AsyncReadExt as _, AsyncWrite, AsyncWriteExt as _};
 use tokio::process::{Child, Command};
@@ -47,8 +47,9 @@ pub struct Bridge {
     /// we don't own the lifecycle of an externally-started app.
     child: Arc<Mutex<Option<Child>>>,
     /// Local-socket target — kept alive while the bridge is so its backing socket file
-    /// (on unix) survives.
-    _socket_target: SocketTarget,
+    /// (on unix) survives. `None` when the transport isn't a local socket (e.g. a gRPC
+    /// tunnel supplied via [`Bridge::from_transport`]).
+    _socket_target: Option<SocketTarget>,
     /// How this bridge was created (informational).
     pub peer_info: PeerInfo,
 }
@@ -102,7 +103,10 @@ pub struct StateSnapshot {
     /// gate commands the peer doesn't honor (Step/Run/Pause against a live app, etc.).
     #[cfg_attr(
         not(test),
-        expect(dead_code, reason = "consumed by upcoming capability-gating in tool handlers")
+        expect(
+            dead_code,
+            reason = "consumed by upcoming capability-gating in tool handlers"
+        )
     )]
     pub hello: Option<egui_inspection::protocol::PeerHello>,
     pub frame: Option<Box<Frame>>,
@@ -130,10 +134,7 @@ impl SharedState {
 
     /// Read-only access to the accesskit tree via a closure. The tree isn't `Clone`, so
     /// callers project the data they need (node list, lookup by id) before returning.
-    pub async fn with_tree<R>(
-        &self,
-        f: impl FnOnce(Option<&accesskit_consumer::Tree>) -> R,
-    ) -> R {
+    pub async fn with_tree<R>(&self, f: impl FnOnce(Option<&accesskit_consumer::Tree>) -> R) -> R {
         let g = self.inner.lock().await;
         f(g.accesskit_tree.as_ref())
     }
@@ -160,7 +161,10 @@ impl Bridge {
 
         let mut cmd = Command::new(&bin);
         cmd.args(&args)
-            .env(egui_inspection::INSPECTION_SOCKET_ENV_VAR, &socket_target.name)
+            .env(
+                egui_inspection::INSPECTION_SOCKET_ENV_VAR,
+                &socket_target.name,
+            )
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             // Inherit stderr so harness panics and cargo build errors surface where the
@@ -194,8 +198,7 @@ impl Bridge {
     ///
     /// Returns the listener and the socket target (must be kept alive on unix).
     pub async fn prepare_attach() -> anyhow::Result<(Listener, SocketTarget)> {
-        let socket_target =
-            generate_socket_target().context("allocate inspection socket")?;
+        let socket_target = generate_socket_target().context("allocate inspection socket")?;
         let name = socket_name(&socket_target.name)
             .with_context(|| format!("parse socket name {}", socket_target.name))?;
         let listener = ListenerOptions::new()
@@ -228,21 +231,38 @@ impl Bridge {
 
         let socket = socket_target.name.clone();
         let (reader, writer) = stream.split();
+        let mut bridge = Self::from_transport(reader, writer, PeerInfo::Attached { socket });
+        *bridge.child.lock().await = child;
+        bridge._socket_target = Some(socket_target);
+        Ok(bridge)
+    }
+
+    /// Build a bridge over an arbitrary async byte transport instead of a local socket.
+    ///
+    /// The transport only has to ferry the raw framed-MessagePack inspection protocol;
+    /// everything above it (commands, frames, the AccessKit tree) is identical to the
+    /// socket path. Used by hosts that tunnel inspection over their own transport — e.g.
+    /// `re_mcp`, which carries it through rerun's gRPC `MessageProxyService`.
+    pub fn from_transport<R, W>(reader: R, writer: W, peer_info: PeerInfo) -> Self
+    where
+        R: AsyncRead + Unpin + Send + 'static,
+        W: AsyncWrite + Unpin + Send + 'static,
+    {
         let state = SharedState::new();
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
-        let child_arc: Arc<Mutex<Option<Child>>> = Arc::new(Mutex::new(child));
+        let child_arc: Arc<Mutex<Option<Child>>> = Arc::new(Mutex::new(None));
         let reader_task = tokio::spawn(read_loop(reader, state.clone(), child_arc.clone()));
         let writer_task = tokio::spawn(write_loop(writer, cmd_rx));
 
-        Ok(Self {
+        Self {
             state,
             cmd_tx,
             _reader_task: reader_task,
             _writer_task: writer_task,
             child: child_arc,
-            _socket_target: socket_target,
-            peer_info: PeerInfo::Attached { socket },
-        })
+            _socket_target: None,
+            peer_info,
+        }
     }
 
     pub fn send(&self, cmd: InspectorCommand) -> anyhow::Result<()> {
@@ -297,8 +317,8 @@ impl Drop for Bridge {
     }
 }
 
-async fn read_loop(
-    mut reader: RecvHalf,
+async fn read_loop<R: AsyncRead + Unpin>(
+    mut reader: R,
     state: Arc<SharedState>,
     child: Arc<Mutex<Option<Child>>>,
 ) {
@@ -361,11 +381,7 @@ struct NoopChangeHandler;
 
 impl accesskit_consumer::TreeChangeHandler for NoopChangeHandler {
     fn node_added(&mut self, _: &accesskit_consumer::Node<'_>) {}
-    fn node_updated(
-        &mut self,
-        _: &accesskit_consumer::Node<'_>,
-        _: &accesskit_consumer::Node<'_>,
-    ) {
+    fn node_updated(&mut self, _: &accesskit_consumer::Node<'_>, _: &accesskit_consumer::Node<'_>) {
     }
     fn focus_moved(
         &mut self,
@@ -376,8 +392,8 @@ impl accesskit_consumer::TreeChangeHandler for NoopChangeHandler {
     fn node_removed(&mut self, _: &accesskit_consumer::Node<'_>) {}
 }
 
-async fn write_loop(
-    mut writer: SendHalf,
+async fn write_loop<W: AsyncWrite + Unpin>(
+    mut writer: W,
     mut rx: mpsc::UnboundedReceiver<InspectorCommand>,
 ) {
     while let Some(cmd) = rx.recv().await {

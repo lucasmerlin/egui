@@ -7,11 +7,11 @@
 
 use std::io;
 
-use interprocess::local_socket::{ListenerOptions, Name, prelude::*};
-#[cfg(windows)]
-use interprocess::local_socket::GenericNamespaced;
 #[cfg(not(windows))]
 use interprocess::local_socket::GenericFilePath;
+#[cfg(windows)]
+use interprocess::local_socket::GenericNamespaced;
+use interprocess::local_socket::{ListenerOptions, Name, prelude::*};
 
 /// The two halves of a connected local-socket stream, re-exported so consumers build
 /// reader/writer threads without depending on `interprocess` directly.
@@ -59,7 +59,11 @@ pub fn generate_socket_target() -> io::Result<SocketTarget> {
         let dir = tempfile::Builder::new()
             .prefix("egui-inspection-")
             .tempdir()?;
-        let name = dir.path().join("inspection.sock").to_string_lossy().into_owned();
+        let name = dir
+            .path()
+            .join("inspection.sock")
+            .to_string_lossy()
+            .into_owned();
         Ok(SocketTarget { name, dir })
     }
     #[cfg(windows)]
@@ -99,7 +103,9 @@ impl Listener {
     /// # Errors
     /// When `raw` isn't a valid local-socket name, or the socket can't be bound.
     pub fn bind(raw: &str) -> io::Result<Self> {
-        let listener = ListenerOptions::new().name(socket_name(raw)?).create_sync()?;
+        let listener = ListenerOptions::new()
+            .name(socket_name(raw)?)
+            .create_sync()?;
         Ok(Self(listener))
     }
 

@@ -32,7 +32,7 @@ use std::thread;
 use egui::{Context, FullOutput, RawInput};
 
 use crate::INSPECTION_SOCKET_ENV_VAR;
-use crate::transport::{self, RecvHalf, SendHalf};
+use crate::transport;
 use crate::protocol::{
     Capabilities, Frame, FrameScreenshot, HarnessMessage, InspectorCommand, PROTOCOL_VERSION,
     PeerHello, PeerKind, read_message, write_message,
@@ -123,20 +123,39 @@ impl InspectionPlugin {
     pub fn attach(socket: &str, label: Option<String>) -> Result<Self, InspectionError> {
         let (reader_stream, writer_stream) =
             transport::connect(socket).map_err(InspectionError::Connect)?;
+        Self::attach_io(reader_stream, writer_stream, label)
+    }
 
+    /// Attach over already-connected reader/writer halves instead of dialing a named socket.
+    ///
+    /// This is used when some other transport hands us a stream pair directly — e.g. `re_mcp`
+    /// relays the `egui_inspection` protocol over rerun's gRPC `Inspect` tunnel and gives the
+    /// viewer one end of a socketpair to read from and write to.
+    ///
+    /// # Errors
+    /// When a reader / writer thread can't be spawned.
+    pub fn attach_io<R, W>(
+        reader: R,
+        writer: W,
+        label: Option<String>,
+    ) -> Result<Self, InspectionError>
+    where
+        R: std::io::Read + Send + 'static,
+        W: std::io::Write + Send + 'static,
+    {
         let shared_ctx: SharedCtx = Arc::new(OnceLock::new());
 
         let (command_tx, command_rx) = mpsc::channel::<InspectorCommand>();
         let reader_ctx = shared_ctx.clone();
         let reader_thread = thread::Builder::new()
             .name("egui_inspection_reader".into())
-            .spawn(move || run_reader(BufReader::new(reader_stream), &command_tx, &reader_ctx))
+            .spawn(move || run_reader(BufReader::new(reader), &command_tx, &reader_ctx))
             .map_err(|err| InspectionError::Pipe(format!("spawn reader thread: {err}")))?;
 
         let (outbound_tx, outbound_rx) = mpsc::sync_channel::<HarnessMessage>(OUTBOUND_QUEUE_DEPTH);
         let writer_thread = thread::Builder::new()
             .name("egui_inspection_writer".into())
-            .spawn(move || run_writer(BufWriter::new(writer_stream), outbound_rx))
+            .spawn(move || run_writer(BufWriter::new(writer), outbound_rx))
             .map_err(|err| InspectionError::Pipe(format!("spawn writer thread: {err}")))?;
 
         // Hello must be the first message on the wire. Send via the writer-thread queue
@@ -345,8 +364,8 @@ impl egui::Plugin for InspectionPlugin {
 /// Reader-thread entry point: forward every decoded [`InspectorCommand`] into the channel
 /// until EOF or the receiver is dropped. After each enqueue, wake the UI thread so an
 /// otherwise-idle app actually processes the command on its next frame.
-fn run_reader(
-    mut reader: BufReader<RecvHalf>,
+fn run_reader<R: std::io::Read>(
+    mut reader: BufReader<R>,
     tx: &mpsc::Sender<InspectorCommand>,
     ctx: &SharedCtx,
 ) {
@@ -366,8 +385,8 @@ fn run_reader(
 }
 
 /// Writer-thread entry point: drain the outbound queue, framing each message to the socket.
-fn run_writer(
-    mut writer: BufWriter<SendHalf>,
+fn run_writer<W: std::io::Write>(
+    mut writer: BufWriter<W>,
     rx: mpsc::Receiver<HarnessMessage>,
 ) {
     while let Ok(msg) = rx.recv() {

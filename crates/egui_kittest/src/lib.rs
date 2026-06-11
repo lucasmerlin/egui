@@ -567,17 +567,23 @@ impl<'a, State: 'static> Harness<'a, State> {
 
     /// Access the state.
     pub fn state(&self) -> &State {
-        self.state.as_ref().expect("state already taken via into_state")
+        self.state
+            .as_ref()
+            .expect("state already taken via into_state")
     }
 
     /// Access the state mutably.
     pub fn state_mut(&mut self) -> &mut State {
-        self.state.as_mut().expect("state already taken via into_state")
+        self.state
+            .as_mut()
+            .expect("state already taken via into_state")
     }
 
     /// Consume the harness and return the state.
     pub fn into_state(mut self) -> State {
-        self.state.take().expect("state already taken via into_state")
+        self.state
+            .take()
+            .expect("state already taken via into_state")
     }
 
     /// Queue an event to be processed in the next frame.

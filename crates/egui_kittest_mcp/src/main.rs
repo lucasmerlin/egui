@@ -6,10 +6,7 @@
 //! `attach` for live apps. The harness's [`egui_kittest::InspectorPlugin`] dials the socket
 //! directly, so there's no relaying middleman.
 
-mod bridge;
-mod server;
-mod tools;
-mod tree;
+use egui_kittest_mcp::server;
 
 fn main() -> anyhow::Result<()> {
     init_tracing();

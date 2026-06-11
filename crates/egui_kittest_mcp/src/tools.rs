@@ -49,6 +49,17 @@ impl AppState {
     pub fn new() -> Arc<Self> {
         Arc::new(Self::default())
     }
+
+    /// Install a bridge built elsewhere (e.g. a gRPC-tunnelled one from `re_mcp`), so the
+    /// existing tools drive it as if it had been `attach`ed. Replaces any current bridge.
+    pub async fn install_bridge(&self, bridge: Bridge) {
+        *self.bridge.lock().await = Some(bridge);
+    }
+
+    /// Whether a bridge is currently installed.
+    pub async fn is_connected(&self) -> bool {
+        self.bridge.lock().await.is_some()
+    }
 }
 
 #[derive(Clone)]
@@ -60,10 +71,21 @@ pub struct Server {
 
 impl Server {
     pub fn new() -> Self {
+        Self::from_state(AppState::new())
+    }
+
+    /// Build a server around a shared [`AppState`], so a host (e.g. `re_mcp`) can hold the
+    /// same state and install a bridge into it out-of-band.
+    pub fn from_state(state: Arc<AppState>) -> Self {
         Self {
-            state: AppState::new(),
+            state,
             tool_router: Self::tool_router(),
         }
+    }
+
+    /// The shared app state (holds the active bridge).
+    pub fn state(&self) -> Arc<AppState> {
+        self.state.clone()
     }
 
     /// Acquire the bridge lock, run `f(bridge)`, and shape the result into a
@@ -172,13 +194,17 @@ async fn resolve_target(
         .as_locator()
         .ok_or_else(|| anyhow!("target requires `id`, `role`, `label_contains`, or `pos`"))?;
     let snap = bridge.state.snapshot().await;
-    let pixels_per_point = snap.frame.as_ref().map(|f| f.pixels_per_point).unwrap_or(1.0);
+    let pixels_per_point = snap
+        .frame
+        .as_ref()
+        .map(|f| f.pixels_per_point)
+        .unwrap_or(1.0);
     bridge
         .state
         .with_tree(|t| {
             let tree = t.ok_or_else(|| anyhow!("no accesskit tree yet"))?;
-            let node = tree::resolve_node(tree, &locator)
-                .ok_or_else(|| anyhow!("node not found"))?;
+            let node =
+                tree::resolve_node(tree, &locator).ok_or_else(|| anyhow!("node not found"))?;
             let view = tree::node_view(&node);
             let bounds = view
                 .bounds
@@ -411,9 +437,7 @@ impl Server {
             Ok(b) => b,
             Err(e) => return Ok(text_error(format!("launch failed: {e:#}"))),
         };
-        let _ = bridge
-            .wait_for_frame_after(0, Duration::from_secs(5))
-            .await;
+        let _ = bridge.wait_for_frame_after(0, Duration::from_secs(5)).await;
         let snap = bridge.state.snapshot().await;
         let info = bridge.peer_info.clone();
         *guard = Some(bridge);
@@ -451,7 +475,10 @@ impl Server {
         if let Some(bin) = args.bin.clone() {
             let mut cmd = tokio::process::Command::new(&bin);
             cmd.args(&args.args)
-                .env(egui_inspection::INSPECTION_SOCKET_ENV_VAR, &socket_target.name)
+                .env(
+                    egui_inspection::INSPECTION_SOCKET_ENV_VAR,
+                    &socket_target.name,
+                )
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::inherit())
@@ -469,8 +496,7 @@ impl Server {
         }
 
         let timeout = Duration::from_secs(args.timeout_secs);
-        let bridge = match Bridge::accept_pending(listener, socket_target, spawned, timeout).await
-        {
+        let bridge = match Bridge::accept_pending(listener, socket_target, spawned, timeout).await {
             Ok(b) => b,
             Err(e) => return Ok(text_error(format!("attach failed: {e:#}"))),
         };
@@ -504,9 +530,7 @@ impl Server {
         }
     }
 
-    #[tool(
-        description = "Report whether a harness is running and its current step/blocked state."
-    )]
+    #[tool(description = "Report whether a harness is running and its current step/blocked state.")]
     async fn status(&self, _p: Parameters<EmptyArgs>) -> Result<CallToolResult, McpError> {
         let guard = self.state.bridge.lock().await;
         let body = match guard.as_ref() {
@@ -534,13 +558,12 @@ impl Server {
     }
 
     #[tool(description = "Return the latest rendered frame as PNG.")]
-    async fn screenshot(
-        &self,
-        _p: Parameters<EmptyArgs>,
-    ) -> Result<CallToolResult, McpError> {
+    async fn screenshot(&self, _p: Parameters<EmptyArgs>) -> Result<CallToolResult, McpError> {
         let guard = self.state.bridge.lock().await;
         let Some(bridge) = guard.as_ref() else {
-            return Ok(text_error("no app running — call `launch` or `attach` first"));
+            return Ok(text_error(
+                "no app running — call `launch` or `attach` first",
+            ));
         };
         match screenshot_inner(bridge).await {
             Ok((meta, png_b64)) => {
@@ -684,7 +707,9 @@ impl Server {
             .await
     }
 
-    #[tool(description = "Advance the harness by N frames (default 1) and return the new screenshot.")]
+    #[tool(
+        description = "Advance the harness by N frames (default 1) and return the new screenshot."
+    )]
     async fn step(
         &self,
         Parameters(args): Parameters<StepArgs>,
@@ -781,11 +806,9 @@ impl Server {
 #[tool_handler]
 impl ServerHandler for Server {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
-            .with_server_info(Implementation::new(
-                "kittest-mcp",
-                env!("CARGO_PKG_VERSION"),
-            ))
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_server_info(
+            Implementation::new("kittest-mcp", env!("CARGO_PKG_VERSION")),
+        )
     }
 }
 
@@ -802,9 +825,7 @@ impl Server {
             "attach" => unpack_then(args, |p| async move { self.attach(p).await }).await,
             "kill" => unpack_then(args, |p| async move { self.kill(p).await }).await,
             "status" => unpack_then(args, |p| async move { self.status(p).await }).await,
-            "screenshot" => {
-                unpack_then(args, |p| async move { self.screenshot(p).await }).await
-            }
+            "screenshot" => unpack_then(args, |p| async move { self.screenshot(p).await }).await,
             "query_tree" => unpack_then(args, |p| async move { self.query_tree(p).await }).await,
             "get_node" => unpack_then(args, |p| async move { self.get_node(p).await }).await,
             "click" => unpack_then(args, |p| async move { self.click(p).await }).await,
@@ -872,7 +893,10 @@ async fn screenshot_inner(bridge: &Bridge) -> anyhow::Result<(ScreenshotMeta, St
                 height: shot.height,
                 pixels_per_point: frame.pixels_per_point,
             };
-            return Ok((meta, base64::engine::general_purpose::STANDARD.encode(&shot.png)));
+            return Ok((
+                meta,
+                base64::engine::general_purpose::STANDARD.encode(&shot.png),
+            ));
         }
     }
 
@@ -1205,22 +1229,23 @@ async fn step_inner(bridge: &Bridge, args: StepArgs) -> anyhow::Result<Value> {
 
 async fn type_text_inner(bridge: &Bridge, args: TypeTextArgs) -> anyhow::Result<Value> {
     // Optionally focus a target widget by clicking it first.
-    let focused_locator = if args.id.is_some() || args.role.is_some() || args.label_contains.is_some() {
-        let click_args = ClickArgs {
-            target: Target {
-                id: args.id.clone(),
-                role: args.role.clone(),
-                label_contains: args.label_contains.clone(),
-                pos: None,
-            },
-            button: "primary".to_string(),
-            count: 1,
-            modifiers: PressKeyModifiers::default(),
+    let focused_locator =
+        if args.id.is_some() || args.role.is_some() || args.label_contains.is_some() {
+            let click_args = ClickArgs {
+                target: Target {
+                    id: args.id.clone(),
+                    role: args.role.clone(),
+                    label_contains: args.label_contains.clone(),
+                    pos: None,
+                },
+                button: "primary".to_string(),
+                count: 1,
+                modifiers: PressKeyModifiers::default(),
+            };
+            Some(click_inner(bridge, click_args).await?)
+        } else {
+            None
         };
-        Some(click_inner(bridge, click_args).await?)
-    } else {
-        None
-    };
 
     let mut last_step = bridge
         .state
@@ -1257,8 +1282,8 @@ async fn type_text_inner(bridge: &Bridge, args: TypeTextArgs) -> anyhow::Result<
 }
 
 async fn press_key_inner(bridge: &Bridge, args: PressKeyArgs) -> anyhow::Result<Value> {
-    let key = egui::Key::from_name(&args.key)
-        .ok_or_else(|| anyhow!("unknown key `{}`", args.key))?;
+    let key =
+        egui::Key::from_name(&args.key).ok_or_else(|| anyhow!("unknown key `{}`", args.key))?;
     let modifiers = args.modifiers.to_egui();
     let prev_step = bridge
         .state

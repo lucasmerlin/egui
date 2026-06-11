@@ -27,12 +27,12 @@ use std::thread;
 use egui::accesskit;
 use egui::mutex::Mutex;
 
+use crate::{Harness, Plugin, TestResult};
 use egui_inspection::protocol::{
     Capabilities, Frame, FrameScreenshot, HarnessMessage, InspectorCommand, PROTOCOL_VERSION,
     PeerHello, PeerKind, SourceView, read_message, write_message,
 };
 use egui_inspection::transport::{self, RecvHalf, SendHalf, SocketTarget};
-use crate::{Harness, Plugin, TestResult};
 
 /// Environment variable: when set to a truthy value, every harness auto-launches an inspector.
 pub const INSPECTOR_ENV_VAR: &str = "KITTEST_INSPECTOR";
@@ -349,38 +349,38 @@ impl Connection {
     fn launch(label: Option<String>) -> Result<Self, InspectorError> {
         // Two topologies, both ending in a split local-socket stream. Connect mode wins when
         // the socket var is set (the inspector/bridge already bound it).
-        let (reader, writer, child, socket_target) =
-            if let Ok(socket) = std::env::var(egui_inspection::INSPECTION_SOCKET_ENV_VAR) {
-                // Connect mode: dial the already-listening socket.
-                let (r, w) = transport::connect(&socket).map_err(InspectorError::Connect)?;
-                (r, w, None, None)
-            } else {
-                // Spawn mode: bind a socket, spawn the inspector pointed at it, accept.
-                let target =
-                    transport::generate_socket_target().map_err(InspectorError::Connect)?;
-                let listener =
-                    transport::Listener::bind(&target.name).map_err(InspectorError::Connect)?;
+        let (reader, writer, child, socket_target) = if let Ok(socket) =
+            std::env::var(egui_inspection::INSPECTION_SOCKET_ENV_VAR)
+        {
+            // Connect mode: dial the already-listening socket.
+            let (r, w) = transport::connect(&socket).map_err(InspectorError::Connect)?;
+            (r, w, None, None)
+        } else {
+            // Spawn mode: bind a socket, spawn the inspector pointed at it, accept.
+            let target = transport::generate_socket_target().map_err(InspectorError::Connect)?;
+            let listener =
+                transport::Listener::bind(&target.name).map_err(InspectorError::Connect)?;
 
-                let bin = std::env::var(INSPECTOR_PATH_ENV_VAR)
-                    .map(PathBuf::from)
-                    .unwrap_or_else(|_| PathBuf::from("kittest_inspector"));
+            let bin = std::env::var(INSPECTOR_PATH_ENV_VAR)
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| PathBuf::from("kittest_inspector"));
 
-                // Important: do NOT inherit stderr. The cargo-test / nextest stderr capture
-                // pipe can close between tests while the inspector is still alive; a later
-                // `eprintln!` in the inspector would then panic ("failed printing to stderr:
-                // Broken pipe") and take the window down. The inspector keeps its own log
-                // file for diagnostics.
-                let child = Command::new(&bin)
-                    .env(egui_inspection::INSPECTION_SOCKET_ENV_VAR, &target.name)
-                    .stdin(Stdio::null())
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .spawn()
-                    .map_err(InspectorError::Connect)?;
+            // Important: do NOT inherit stderr. The cargo-test / nextest stderr capture
+            // pipe can close between tests while the inspector is still alive; a later
+            // `eprintln!` in the inspector would then panic ("failed printing to stderr:
+            // Broken pipe") and take the window down. The inspector keeps its own log
+            // file for diagnostics.
+            let child = Command::new(&bin)
+                .env(egui_inspection::INSPECTION_SOCKET_ENV_VAR, &target.name)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .map_err(InspectorError::Connect)?;
 
-                let (r, w) = listener.accept().map_err(InspectorError::Connect)?;
-                (r, w, Some(child), Some(target))
-            };
+            let (r, w) = listener.accept().map_err(InspectorError::Connect)?;
+            (r, w, Some(child), Some(target))
+        };
 
         let (command_tx, command_rx) = mpsc::channel::<InspectorCommand>();
         let reader_thread = thread::Builder::new()
@@ -426,22 +426,20 @@ impl Connection {
             return;
         }
         self.step = self.step.saturating_add(1);
-        let screenshot = image.and_then(|img| match egui_inspection::encode_png(
-            img.width(),
-            img.height(),
-            img.as_raw(),
-        ) {
-            Ok(png) => Some(FrameScreenshot {
-                width: img.width(),
-                height: img.height(),
-                png,
-            }),
-            Err(err) => {
-                #[expect(clippy::print_stderr)]
-                {
-                    eprintln!("[kittest] PNG encode failed: {err}");
+        let screenshot = image.and_then(|img| {
+            match egui_inspection::encode_png(img.width(), img.height(), img.as_raw()) {
+                Ok(png) => Some(FrameScreenshot {
+                    width: img.width(),
+                    height: img.height(),
+                    png,
+                }),
+                Err(err) => {
+                    #[expect(clippy::print_stderr)]
+                    {
+                        eprintln!("[kittest] PNG encode failed: {err}");
+                    }
+                    None
                 }
-                None
             }
         });
         let frame = Frame {
